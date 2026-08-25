@@ -1,38 +1,28 @@
-# Stoma Companion — collaborator handoff
+# Stoma Companion
 
-macOS app for USDZ intake, base-perimeter extraction, ArUco/photo scale, and G-code / polar export.
+Stoma measuring & automated wafer cutting system — investor demo build.
 
-## Requirements
+**Client:** Cole Fields, TACKLE Medical · **Build:** DryDock, LLC
+**Scope:** PRD v0.2, signed 2026-08-21 (`docs/`)
 
-- macOS 14+
-- Xcode 15+ (Apple Silicon recommended for Object Capture)
-- Open **StomaCompanion** scheme (not StomaScanner)
-
-## Open & run
-
-1. Unzip this archive.
-2. Open `ios/StomaScanner/StomaScanner.xcodeproj` in Xcode.
-3. Select the **StomaCompanion** scheme and **My Mac**.
-4. Build and run (⌘R).
-
-You may need to set your own **Development Team** under Signing & Capabilities.
+A patient records a video of their stoma on any phone. The system reconstructs a
+3D mesh, derives real-world scale from an ArUco marker, finds the stoma base
+automatically, generates an offset wafer outline, and streams G-code to a
+GRBL-based cutter — end to end in under two minutes, within ±1 mm.
 
 ## Layout
 
-```
-StomaCompanion-handoff/
-├── README.md
-├── Stoma Companion Overview.pdf
-└── ios/StomaScanner/
-    ├── CompanionMac/
-    ├── SharedPhotogrammetry/
-    ├── StomaScanner/
-    ├── StomaScanner.xcodeproj
-    └── project.yml
-```
+| Directory | Contents |
+|---|---|
+| `backend/` | Python API + job pipeline + measurement maths + G-code/GRBL |
+| `worker-colmap/` | COLMAP reconstruction worker (primary engine) |
+| `worker-mac/` | Apple Object Capture fallback worker |
+| `web/` | Web app + Capacitor iOS/Android shells |
+| `legacy-mac/` | Original handoff Mac app — reference & fixture generator |
+| `fixtures/` | Test videos + golden outputs for parity testing |
+| `docs/` | PRD, phase plan, decision log |
 
-## Notes
+Start with [CLAUDE.md](CLAUDE.md) (constraints + architecture), then
+[docs/PLAN.md](docs/PLAN.md) and [TASKS.md](TASKS.md).
 
-- Primary work is under `CompanionMac/`. Shared reconstruction code is in `SharedPhotogrammetry/`.
-- The Xcode project also contains an iOS **StomaScanner** target; collaborators focused on Companion can ignore that scheme.
-- Build caches and personal Xcode userdata are omitted.
+The original codebase as received from Cole is preserved at git tag `as-received`.
