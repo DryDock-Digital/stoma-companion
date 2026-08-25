@@ -7,9 +7,10 @@ CLAUDE.md. FR/NFR references are to docs/PRD v0.2.
 ## P0 — Intake & De-risk
 
 - [x] **P0-1 · Repo under version control** — git init, as-received commit + tag, monorepo layout, CLAUDE.md/PLAN/decisions/TASKS. *(done 2026-08-25)*
-- [ ] **P0-2a · Legacy app builds & runs** — StomaCompanion scheme builds on a DryDock Mac. Document signing/setup steps in legacy-mac/README.md. No videos needed — do immediately.
-- [ ] **P0-2b · Smoke-test video** — print an ArUco marker (legacy `ArUcoMarkerGenerator`), film any small object on it with a phone, run it end to end through the legacy app. Proves the toolchain, not accuracy; commit as `fixtures/smoke/`. No dependency on Cole.
+- [ ] **P0-2a · Legacy app builds & runs** — StomaCompanion scheme builds on a DryDock Mac. Document signing/setup steps in legacy-mac/README.md. *Deferred by Aaron's call (2026-08-25): do when Cole's package arrives, alongside P0-3. Porting reads the Swift source; running it is only needed for fixtures.*
+- [ ] **P0-2b · Smoke-test video** — print an ArUco marker (legacy `ArUcoMarkerGenerator`), film any small object on it with a phone, run it end to end through the legacy app. Proves the toolchain, not accuracy; commit as `fixtures/smoke/`. *Deferred with P0-2a.*
 - [ ] **P0-2c · Reproduce Cole's baseline** — process his 19 Aug demo-model video, confirm the 33 mm reading reproduces. **Blocked on Cole's videos.**
+- Note: P1-4's "produces a mesh" check uses a stand-in image set (public photogrammetry sample or phone photos of any object) — no dependency on Cole or the legacy app.
 - [ ] **P0-3 · Golden fixtures, first cut** — for each of Cole's test videos: run the legacy app, commit inputs + outputs (keyframes, mesh, scale, diameter, outline JSON, G-code) under `fixtures/<model>/`. Set up git LFS for video/mesh files. Acceptance: fixtures/README schema honored; at least one complete fixture set committed. **Blocked on Cole's videos.**
 - [ ] **P0-4 · Emails out: Cole + Remedy** — draft and send the three open questions (FR-10 reference point → Cole; transport FR-16 + example G-code FR-18 → Remedy). Acceptance: sent, logged in docs/decisions.md when answered.
 - [ ] **P0-5 · PRD ↔ design control reconciliation** — compare PRD v0.2 against Cole's design control document; list discrepancies; confirm pricing per §2. Output: docs/reconciliation.md.
