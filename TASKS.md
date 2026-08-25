@@ -45,12 +45,16 @@ CLAUDE.md. FR/NFR references are to docs/PRD v0.2.
 - [ ] **P3-5 · Polish pass** — visual quality to demo standard (NFR-06); Cole sign-off.
 - [ ] **P3-6 · Device matrix check** — same build verified in desktop browser, on an iPhone (Capacitor), and an Android phone (Capacitor) against the same API.
 
-## P4 — Device Connectivity (parallel track)
+## P4 — Device Connectivity (deferred — starts after the measurement pipeline proves tolerance; see decisions.md D6)
 
-- [ ] **P4-1 · Bench rig** — order/assemble GRBL bench target (~$50–150 pen plotter or GRBL board + ESP32 Wi-Fi bridge); document setup in worker docs.
-- [ ] **P4-2 · G-code sender** — GRBL streaming module in backend/ (serial-over-Wi-Fi first; transport-agnostic interface so Bluetooth-via-Capacitor stays open per FR-16). Status: queued → cutting → done.
-- [ ] **P4-3 · Auto-transmit** — job completion triggers send with no manual file handling (FR-15); cut status surfaces in the P3 flow.
-- [ ] **P4-4 · Remedy validation** — when the example G-code file arrives: validate output against it; keep tooling specifics on the CNC side (FR-18). Blocked on Remedy — do not wait on this ticket.
+Sequencing per D6: no GRBL work until P1/P2 demonstrate ±1 mm on Cole's videos,
+and nothing physical is bought or built until machine information arrives.
+
+- [ ] **P4-1 · GRBL simulator target** — stand up grblHAL sim (or GRBL on a virtual serial port) as the development target. Software only, no hardware.
+- [ ] **P4-2 · G-code sender (vs sim)** — GRBL streaming module in backend/ (transport-agnostic interface so serial-over-Wi-Fi and Bluetooth-via-Capacitor both stay open per FR-16). Status: queued → cutting → done. Verified against the simulator.
+- [ ] **P4-3 · Auto-transmit (vs sim)** — job completion triggers send with no manual file handling (FR-15); cut status surfaces in the P3 flow.
+- [ ] **P4-4 · Machine info gate** — Remedy's answers in hand (transport FR-16, example G-code FR-18): validate our output against the example file, commit the transport, keep tooling specifics on the CNC side. **Blocked on Remedy — nothing physical before this.**
+- [ ] **P4-5 · Demo cutting target decision (with Cole, at P6 planning)** — once P4-4 resolves: real machine available for demo day, or approve a ~$100 bench stand-in as a client expense. Cole's call, not started unilaterally.
 
 ## P5 — Verification & Test-Log Module
 

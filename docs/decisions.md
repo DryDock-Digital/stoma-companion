@@ -3,6 +3,13 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D6 — 2026-08-25 · Device connectivity: simulator-first, nothing physical without machine info
+Priority is the measurement pipeline (P1/P2/P5) proving ±1 mm on Cole's videos.
+GRBL work follows, developed against grblHAL sim (or GRBL on a virtual serial
+port) — no hardware purchased or built until Remedy's machine information arrives
+(transport, example G-code). Any physical demo stand-in (~$100 bench rig) is a
+client-approved expense decided with Cole at P6 planning, not started unilaterally.
+
 ## D5 — 2026-08-25 · Monorepo layout, legacy app preserved as fixture generator
 Single repo (backend / workers / web / legacy-mac / fixtures / docs). Cole's Mac app
 is kept read-only as the porting reference and the generator of golden fixtures;

@@ -35,13 +35,15 @@ change gets a deviation score automatically. Highest-risk item in the PRD.
 video, wait, collect the wafer. Three screens, zero parameters, polished enough to
 present to investors without caveats. Demo priority: web + one wrapped platform.
 
-## P4 — Device Connectivity (parallel track)
+## P4 — Device Connectivity (deferred: after tolerance is proven)
 
-**TLDR:** Generate G-code and stream it to a GRBL controller wirelessly with no
-manual file handling. Build against a cheap bench GRBL rig (~$100) so the
-unresponsive manufacturer (Remedy, mid-FDA-audit) can't block the critical path.
-Prefer backend-over-Wi-Fi sending; Bluetooth would route through the Capacitor
-shells (Web Bluetooth doesn't exist in iOS Safari).
+**TLDR:** Generate G-code and stream it to a GRBL controller with no manual file
+handling — developed entirely against a GRBL simulator (grblHAL sim), starting only
+after the measurement pipeline proves ±1 mm on Cole's videos. Nothing physical is
+bought or built until Remedy supplies machine information (transport, example
+G-code); any demo-day bench stand-in is Cole's approval at P6 planning. Prefer
+backend-over-Wi-Fi sending; Bluetooth would route through the Capacitor shells
+(Web Bluetooth doesn't exist in iOS Safari).
 
 ## P5 — Verification & Test-Log Module (~1 wk to productize; harness starts in P2)
 
