@@ -1,0 +1,526 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0CD6F5378E1BE8E5D2644945 /* PickableMovie.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDDDF66BF4AF73E62C9CDA4 /* PickableMovie.swift */; };
+		21871D37BBD26756EDA7D66B /* PhotogrammetryCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3A89AFE34361DF13E875714 /* PhotogrammetryCaptureView.swift */; };
+		2CE9AD186E1571D99807E402 /* StomaScannerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78FE788FE043CF0E59F93A0E /* StomaScannerApp.swift */; };
+		3938B75A21C713B9C0714ADE /* ScaleReferenceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2641BBD3D5F0CB3ED5F85B69 /* ScaleReferenceCatalog.swift */; };
+		398A38A50E61E547BAD33EAA /* FolderImageImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3CDF5B3CC92C86FAF247D5 /* FolderImageImporter.swift */; };
+		3E3B98299FEFA88DF2868844 /* BasePerimeterExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CBB7B82303D4FD1272677A3 /* BasePerimeterExtractor.swift */; };
+		4BBE4954A30181696BA65420 /* StomaCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80BAAF3E7552EA48F8DB1DA3 /* StomaCompanionApp.swift */; };
+		584006B2866FBD5EC0AAE20A /* CompanionContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4540171B68683D6BBF7AF72B /* CompanionContentView.swift */; };
+		F9012AB4C000000000000002 /* QuarterPhotoCalibrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9012AB4C000000000000001 /* QuarterPhotoCalibrationView.swift */; };
+		D4E5F60718293A4B5C6D7E8F /* OutlineValidationLineEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F60718293A4B5C6D7E8E /* OutlineValidationLineEditor.swift */; };
+		88A4AFCE237D70101261A75B /* BasePerimeterVisualizerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40832202F5B1280CE2D223E /* BasePerimeterVisualizerView.swift */; };
+		B8C9D0E1F2A3040506070809 /* PolarMotionPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C9D0E1F2A3040506070810 /* PolarMotionPreview.swift */; };
+		E7F8091A2B3C4D5E6F708192 /* PolarPathExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F8091A2B3C4D5E6F708191 /* PolarPathExport.swift */; };
+		C1D2E3F4A5B6070809101112 /* IdealFitOutlineGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6070809101113 /* IdealFitOutlineGenerator.swift */; };
+		C1D2E3F4A5B6070809101114 /* ValidationExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6070809101115 /* ValidationExport.swift */; };
+		A6B7C8093E4F5061728394A5B7 /* BasePerimeterSlicePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A8B9023D4E5F61728394A5B6 /* BasePerimeterSlicePreviewView.swift */; };
+		BD2DB583EF9390EF368F0B88 /* PhotogrammetryProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119D732CD60B77E51A9FC7F8 /* PhotogrammetryProcessor.swift */; };
+		BD6B52A2389942CDF70A6CC9 /* PhotogrammetryProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119D732CD60B77E51A9FC7F8 /* PhotogrammetryProcessor.swift */; };
+		BF26874777A3BCD66C84C927 /* USDZQuickLookPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7228977D4217AFEFE04E557A /* USDZQuickLookPreview.swift */; };
+		C4DEB9CE1B41399145A444AF /* VideoFrameExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16EB7AE048E0594F62857F0F /* VideoFrameExporter.swift */; };
+		DD85FF8D3730B033C368C752 /* BasePerimeterToolView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD1F8AF930107FAD61CBE6D /* BasePerimeterToolView.swift */; };
+		E5E5EB435D09CF0D9AEF0D97 /* BasePerimeterExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE34C2E673C97CFF29D303F8 /* BasePerimeterExport.swift */; };
+		F9012AB4C000000000000004 /* PlotterGcodeAutoExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9012AB4C000000000000003 /* PlotterGcodeAutoExport.swift */; };
+		ECB0C842CCAF06A3E64D1ACB /* ReferenceObjectMeasure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDA0AE735FE16AA1C6BE45A /* ReferenceObjectMeasure.swift */; };
+		EEBDC97365E6ED83267557EA /* VideoFrameExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16EB7AE048E0594F62857F0F /* VideoFrameExporter.swift */; };
+		FFB1E8FAE79558F7C5A820F8 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CB346D2721EA1EFB81F0D50 /* RootView.swift */; };
+		A1B2C3D4E5F60718293A0001 /* ArUcoDetectorBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0002 /* ArUcoDetectorBridge.mm */; };
+		A1B2C3D4E5F60718293A0003 /* PhotoStomaContourDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0004 /* PhotoStomaContourDetector.swift */; };
+		A1B2C3D4E5F60718293A0005 /* StomaShapeMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0006 /* StomaShapeMetrics.swift */; };
+		A1B2C3D4E5F60718293A0007 /* PhotoScaleEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0008 /* PhotoScaleEstimator.swift */; };
+		A1B2C3D4E5F60718293A0009 /* ArUcoMarkerGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A000A /* ArUcoMarkerGenerator.swift */; };
+		A1B2C3D4E5F60718293A000D /* MeshArUcoOrbitDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A000E /* MeshArUcoOrbitDetector.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0CB346D2721EA1EFB81F0D50 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		0D61F0B9439B68273F50DBF2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		119D732CD60B77E51A9FC7F8 /* PhotogrammetryProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotogrammetryProcessor.swift; sourceTree = "<group>"; };
+		14EB1CBBC1A059A62F9C432C /* StomaScanner.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = StomaScanner.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		16EB7AE048E0594F62857F0F /* VideoFrameExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoFrameExporter.swift; sourceTree = "<group>"; };
+		1AD1F8AF930107FAD61CBE6D /* BasePerimeterToolView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasePerimeterToolView.swift; sourceTree = "<group>"; };
+		1BDA0AE735FE16AA1C6BE45A /* ReferenceObjectMeasure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceObjectMeasure.swift; sourceTree = "<group>"; };
+		2641BBD3D5F0CB3ED5F85B69 /* ScaleReferenceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaleReferenceCatalog.swift; sourceTree = "<group>"; };
+		2794953A08E82FEEDA169FC1 /* StomaCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StomaCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		42A11BEC9356BCD521DEC9D0 /* StomaCompanion.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StomaCompanion.entitlements; sourceTree = "<group>"; };
+		4540171B68683D6BBF7AF72B /* CompanionContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionContentView.swift; sourceTree = "<group>"; };
+		F9012AB4C000000000000001 /* QuarterPhotoCalibrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuarterPhotoCalibrationView.swift; sourceTree = "<group>"; };
+		D4E5F60718293A4B5C6D7E8E /* OutlineValidationLineEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineValidationLineEditor.swift; sourceTree = "<group>"; };
+		F9012AB4C000000000000003 /* PlotterGcodeAutoExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlotterGcodeAutoExport.swift; sourceTree = "<group>"; };
+		7228977D4217AFEFE04E557A /* USDZQuickLookPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USDZQuickLookPreview.swift; sourceTree = "<group>"; };
+		78FE788FE043CF0E59F93A0E /* StomaScannerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StomaScannerApp.swift; sourceTree = "<group>"; };
+		7CBB7B82303D4FD1272677A3 /* BasePerimeterExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasePerimeterExtractor.swift; sourceTree = "<group>"; };
+		80BAAF3E7552EA48F8DB1DA3 /* StomaCompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StomaCompanionApp.swift; sourceTree = "<group>"; };
+		A3A89AFE34361DF13E875714 /* PhotogrammetryCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotogrammetryCaptureView.swift; sourceTree = "<group>"; };
+		A40832202F5B1280CE2D223E /* BasePerimeterVisualizerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasePerimeterVisualizerView.swift; sourceTree = "<group>"; };
+		B8C9D0E1F2A3040506070810 /* PolarMotionPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolarMotionPreview.swift; sourceTree = "<group>"; };
+		E7F8091A2B3C4D5E6F708191 /* PolarPathExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolarPathExport.swift; sourceTree = "<group>"; };
+		C1D2E3F4A5B6070809101113 /* IdealFitOutlineGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdealFitOutlineGenerator.swift; sourceTree = "<group>"; };
+		C1D2E3F4A5B6070809101115 /* ValidationExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationExport.swift; sourceTree = "<group>"; };
+		C7A8B9023D4E5F61728394A5B6 /* BasePerimeterSlicePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasePerimeterSlicePreviewView.swift; sourceTree = "<group>"; };
+		CA3CDF5B3CC92C86FAF247D5 /* FolderImageImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderImageImporter.swift; sourceTree = "<group>"; };
+		CCDDDF66BF4AF73E62C9CDA4 /* PickableMovie.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickableMovie.swift; sourceTree = "<group>"; };
+		DE34C2E673C97CFF29D303F8 /* BasePerimeterExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasePerimeterExport.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0002 /* ArUcoDetectorBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ArUcoDetectorBridge.mm; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A000B /* ArUcoDetectorBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ArUcoDetectorBridge.h; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A000C /* StomaCompanion-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "StomaCompanion-Bridging-Header.h"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0004 /* PhotoStomaContourDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoStomaContourDetector.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0006 /* StomaShapeMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StomaShapeMetrics.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0008 /* PhotoScaleEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoScaleEstimator.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A000A /* ArUcoMarkerGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArUcoMarkerGenerator.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A000E /* MeshArUcoOrbitDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshArUcoOrbitDetector.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		035907E8589B205F50E02AED /* StomaScanner */ = {
+			isa = PBXGroup;
+			children = (
+				0D61F0B9439B68273F50DBF2 /* Info.plist */,
+				A3A89AFE34361DF13E875714 /* PhotogrammetryCaptureView.swift */,
+				CCDDDF66BF4AF73E62C9CDA4 /* PickableMovie.swift */,
+				0CB346D2721EA1EFB81F0D50 /* RootView.swift */,
+				78FE788FE043CF0E59F93A0E /* StomaScannerApp.swift */,
+				7228977D4217AFEFE04E557A /* USDZQuickLookPreview.swift */,
+			);
+			path = StomaScanner;
+			sourceTree = "<group>";
+		};
+		522993CF97CA258561FA65AB /* SharedPhotogrammetry */ = {
+			isa = PBXGroup;
+			children = (
+				119D732CD60B77E51A9FC7F8 /* PhotogrammetryProcessor.swift */,
+				16EB7AE048E0594F62857F0F /* VideoFrameExporter.swift */,
+			);
+			path = SharedPhotogrammetry;
+			sourceTree = "<group>";
+		};
+		933E502F2B6152F07496A42B = {
+			isa = PBXGroup;
+			children = (
+				B5664FF75FDE4A883617C14A /* CompanionMac */,
+				522993CF97CA258561FA65AB /* SharedPhotogrammetry */,
+				035907E8589B205F50E02AED /* StomaScanner */,
+				CAF93F6DB43B39BBEF08584C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B5664FF75FDE4A883617C14A /* CompanionMac */ = {
+			isa = PBXGroup;
+			children = (
+				DE34C2E673C97CFF29D303F8 /* BasePerimeterExport.swift */,
+				F9012AB4C000000000000003 /* PlotterGcodeAutoExport.swift */,
+				7CBB7B82303D4FD1272677A3 /* BasePerimeterExtractor.swift */,
+				1AD1F8AF930107FAD61CBE6D /* BasePerimeterToolView.swift */,
+				A40832202F5B1280CE2D223E /* BasePerimeterVisualizerView.swift */,
+				B8C9D0E1F2A3040506070810 /* PolarMotionPreview.swift */,
+				E7F8091A2B3C4D5E6F708191 /* PolarPathExport.swift */,
+				C1D2E3F4A5B6070809101113 /* IdealFitOutlineGenerator.swift */,
+				C1D2E3F4A5B6070809101115 /* ValidationExport.swift */,
+				C7A8B9023D4E5F61728394A5B6 /* BasePerimeterSlicePreviewView.swift */,
+				4540171B68683D6BBF7AF72B /* CompanionContentView.swift */,
+				CA3CDF5B3CC92C86FAF247D5 /* FolderImageImporter.swift */,
+				1BDA0AE735FE16AA1C6BE45A /* ReferenceObjectMeasure.swift */,
+				F9012AB4C000000000000001 /* QuarterPhotoCalibrationView.swift */,
+				D4E5F60718293A4B5C6D7E8E /* OutlineValidationLineEditor.swift */,
+				2641BBD3D5F0CB3ED5F85B69 /* ScaleReferenceCatalog.swift */,
+				A1B2C3D4E5F60718293A000B /* ArUcoDetectorBridge.h */,
+				A1B2C3D4E5F60718293A0002 /* ArUcoDetectorBridge.mm */,
+				A1B2C3D4E5F60718293A000C /* StomaCompanion-Bridging-Header.h */,
+				A1B2C3D4E5F60718293A0004 /* PhotoStomaContourDetector.swift */,
+				A1B2C3D4E5F60718293A0006 /* StomaShapeMetrics.swift */,
+				A1B2C3D4E5F60718293A0008 /* PhotoScaleEstimator.swift */,
+				A1B2C3D4E5F60718293A000A /* ArUcoMarkerGenerator.swift */,
+				A1B2C3D4E5F60718293A000E /* MeshArUcoOrbitDetector.swift */,
+				42A11BEC9356BCD521DEC9D0 /* StomaCompanion.entitlements */,
+				80BAAF3E7552EA48F8DB1DA3 /* StomaCompanionApp.swift */,
+			);
+			path = CompanionMac;
+			sourceTree = "<group>";
+		};
+		CAF93F6DB43B39BBEF08584C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2794953A08E82FEEDA169FC1 /* StomaCompanion.app */,
+				14EB1CBBC1A059A62F9C432C /* StomaScanner.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		48FAB3ED1027D5E1D1CE0A8E /* StomaScanner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 37FC1F1AEEAD43A2ACD4471F /* Build configuration list for PBXNativeTarget "StomaScanner" */;
+			buildPhases = (
+				989891654AF78C8377FB23DF /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StomaScanner;
+			packageProductDependencies = (
+			);
+			productName = StomaScanner;
+			productReference = 14EB1CBBC1A059A62F9C432C /* StomaScanner.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B77CC037D67620B6967FC5A5 /* StomaCompanion */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E556A31CCDDF228E357EBB26 /* Build configuration list for PBXNativeTarget "StomaCompanion" */;
+			buildPhases = (
+				1FCDA9EF1EEDDA2C0BCC33E2 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StomaCompanion;
+			packageProductDependencies = (
+			);
+			productName = StomaCompanion;
+			productReference = 2794953A08E82FEEDA169FC1 /* StomaCompanion.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		41CC6EC90D501987FC748A1C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					48FAB3ED1027D5E1D1CE0A8E = {
+						DevelopmentTeam = 88GBS27T8F;
+					};
+					B77CC037D67620B6967FC5A5 = {
+						DevelopmentTeam = 88GBS27T8F;
+					};
+				};
+			};
+			buildConfigurationList = 45872BCC1DD0E67B31F4478D /* Build configuration list for PBXProject "StomaScanner" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 933E502F2B6152F07496A42B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = CAF93F6DB43B39BBEF08584C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B77CC037D67620B6967FC5A5 /* StomaCompanion */,
+				48FAB3ED1027D5E1D1CE0A8E /* StomaScanner */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1FCDA9EF1EEDDA2C0BCC33E2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E5E5EB435D09CF0D9AEF0D97 /* BasePerimeterExport.swift in Sources */,
+				F9012AB4C000000000000004 /* PlotterGcodeAutoExport.swift in Sources */,
+				3E3B98299FEFA88DF2868844 /* BasePerimeterExtractor.swift in Sources */,
+				DD85FF8D3730B033C368C752 /* BasePerimeterToolView.swift in Sources */,
+				88A4AFCE237D70101261A75B /* BasePerimeterVisualizerView.swift in Sources */,
+				B8C9D0E1F2A3040506070809 /* PolarMotionPreview.swift in Sources */,
+				E7F8091A2B3C4D5E6F708192 /* PolarPathExport.swift in Sources */,
+				C1D2E3F4A5B6070809101112 /* IdealFitOutlineGenerator.swift in Sources */,
+				C1D2E3F4A5B6070809101114 /* ValidationExport.swift in Sources */,
+				A6B7C8093E4F5061728394A5B7 /* BasePerimeterSlicePreviewView.swift in Sources */,
+				584006B2866FBD5EC0AAE20A /* CompanionContentView.swift in Sources */,
+				398A38A50E61E547BAD33EAA /* FolderImageImporter.swift in Sources */,
+				BD6B52A2389942CDF70A6CC9 /* PhotogrammetryProcessor.swift in Sources */,
+				ECB0C842CCAF06A3E64D1ACB /* ReferenceObjectMeasure.swift in Sources */,
+				F9012AB4C000000000000002 /* QuarterPhotoCalibrationView.swift in Sources */,
+				D4E5F60718293A4B5C6D7E8F /* OutlineValidationLineEditor.swift in Sources */,
+				3938B75A21C713B9C0714ADE /* ScaleReferenceCatalog.swift in Sources */,
+				A1B2C3D4E5F60718293A0001 /* ArUcoDetectorBridge.mm in Sources */,
+				A1B2C3D4E5F60718293A0003 /* PhotoStomaContourDetector.swift in Sources */,
+				A1B2C3D4E5F60718293A0005 /* StomaShapeMetrics.swift in Sources */,
+				A1B2C3D4E5F60718293A0007 /* PhotoScaleEstimator.swift in Sources */,
+				A1B2C3D4E5F60718293A0009 /* ArUcoMarkerGenerator.swift in Sources */,
+				A1B2C3D4E5F60718293A000D /* MeshArUcoOrbitDetector.swift in Sources */,
+				4BBE4954A30181696BA65420 /* StomaCompanionApp.swift in Sources */,
+				EEBDC97365E6ED83267557EA /* VideoFrameExporter.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		989891654AF78C8377FB23DF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				21871D37BBD26756EDA7D66B /* PhotogrammetryCaptureView.swift in Sources */,
+				BD2DB583EF9390EF368F0B88 /* PhotogrammetryProcessor.swift in Sources */,
+				0CD6F5378E1BE8E5D2644945 /* PickableMovie.swift in Sources */,
+				FFB1E8FAE79558F7C5A820F8 /* RootView.swift in Sources */,
+				2CE9AD186E1571D99807E402 /* StomaScannerApp.swift in Sources */,
+				BF26874777A3BCD66C84C927 /* USDZQuickLookPreview.swift in Sources */,
+				C4DEB9CE1B41399145A444AF /* VideoFrameExporter.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		68D7E551CFCFDCA2C4CAFD84 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 88GBS27T8F;
+				INFOPLIST_FILE = StomaScanner/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.stomapolar.scanner;
+				SDKROOT = iphoneos;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		6DE03EF65620F747AB30E788 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 88GBS27T8F;
+				INFOPLIST_FILE = StomaScanner/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.stomapolar.scanner;
+				SDKROOT = iphoneos;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		89EEA09CE85DD0867A6BAEFE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CompanionMac/StomaCompanion.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 88GBS27T8F;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Stoma Companion";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.stomapolar.companion;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "CompanionMac/StomaCompanion-Bridging-Header.h";
+				CLANG_ENABLE_MODULES = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		A8AC68251602FC9C26B8E53E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CompanionMac/StomaCompanion.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 88GBS27T8F;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Stoma Companion";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.stomapolar.companion;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "CompanionMac/StomaCompanion-Bridging-Header.h";
+				CLANG_ENABLE_MODULES = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		E0827DE227EE453E8F12E0C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		FB7B4A1F660AF3BEC6CD589D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		37FC1F1AEEAD43A2ACD4471F /* Build configuration list for PBXNativeTarget "StomaScanner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6DE03EF65620F747AB30E788 /* Debug */,
+				68D7E551CFCFDCA2C4CAFD84 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		45872BCC1DD0E67B31F4478D /* Build configuration list for PBXProject "StomaScanner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E0827DE227EE453E8F12E0C4 /* Debug */,
+				FB7B4A1F660AF3BEC6CD589D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E556A31CCDDF228E357EBB26 /* Build configuration list for PBXNativeTarget "StomaCompanion" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A8AC68251602FC9C26B8E53E /* Debug */,
+				89EEA09CE85DD0867A6BAEFE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 41CC6EC90D501987FC748A1C /* Project object */;
+}
