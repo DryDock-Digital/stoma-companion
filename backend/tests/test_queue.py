@@ -95,6 +95,7 @@ def test_claim_flips_status_bumps_attempts_and_is_exclusive():
 def test_claim_is_generic_over_stages():
     store = InMemoryJobStore()
     job = store.create_job()
+    store.update_job(job.id, video_path=paths.video_key(job.id))
     c = store.claim_next_job("k1", None, JobStatus.PENDING, JobStatus.EXTRACTING)
     assert c.id == job.id and c.status == JobStatus.EXTRACTING and c.engine is None
     store.update_job(job.id, status=JobStatus.MESH_READY, engine="mac")

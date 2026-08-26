@@ -120,7 +120,13 @@ class InMemoryJobStore:
         """Atomically flip the oldest `from_status` job to `to_status`.
         Mirrors the claim_next_job() SQL RPC (FOR UPDATE SKIP LOCKED)."""
         with self._lock:
-            claimable = [j for j in self._jobs.values() if j.status == from_status]
+            claimable = [
+                j
+                for j in self._jobs.values()
+                if j.status == from_status
+                # a `pending` row exists before its video finishes uploading
+                and (from_status != JobStatus.PENDING or j.video_path is not None)
+            ]
             if not claimable:
                 return None
             claimable.sort(key=lambda j: (j.created_at or _now(), j.id))

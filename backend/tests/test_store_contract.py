@@ -43,6 +43,7 @@ def test_create_get_update(store):
 
 def test_generic_claim_and_attempts(store):
     job = store.create_job()
+    store.update_job(job.id, video_path=f"{job.id}/input.mov")  # pending needs a video
     c = store.claim_next_job(f"t-{uuid.uuid4()}", None, JobStatus.PENDING, JobStatus.EXTRACTING)
     # another test's rows may be older on a shared Supabase; find ours
     while c is not None and c.id != job.id:

@@ -55,3 +55,14 @@ def test_stage_with_garbage_video_fails_cleanly(tmp_path):
     failed = store.get_job(job.id)
     assert failed.status == JobStatus.FAILED and failed.error_stage == "extract"
     assert "ffprobe" not in failed.error and "ffmpeg" not in failed.error
+
+
+def test_pending_job_is_not_claimable_until_video_is_stored():
+    """POST /scans creates the row, then uploads the video (seconds). The worker
+    must not grab it in between (first real upload failed exactly this way)."""
+    store = InMemoryJobStore()
+    job = store.create_job()
+    w = KeyframeWorker(store, KeyframeParams(), processor=lambda *a: None)
+    assert w.run_once() is False  # no video yet
+    store.update_job(job.id, video_path=paths.video_key(job.id))
+    assert w.run_once() is True
