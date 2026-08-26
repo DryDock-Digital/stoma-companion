@@ -28,7 +28,7 @@ from . import slicing
 
 @dataclass(frozen=True)
 class SliceHeightParams:
-    n_levels: int = 64
+    n_levels: int = 32
     #: slice this far above the detected skin junction (mm)
     margin_mm: float = 1.0
     #: a downward area step must exceed this fraction of the max area to count as
@@ -36,6 +36,9 @@ class SliceHeightParams:
     junction_drop_frac: float = 0.2
     #: ignore this much of the span at either end (fraction) so the caps don't count
     end_trim_frac: float = 0.02
+    #: profile only this fraction of the span above the floor — the base is always in
+    #: the lower part; the top of a tall stoma is never the slice
+    profile_span_frac: float = 0.6
 
 
 DEFAULT_PARAMS = SliceHeightParams()
@@ -106,8 +109,9 @@ def polar_diameter_profile(
 ):
     """(heights_above_floor, Ø or nan): the topology-free stoma profile."""
     span = max(max_h - floor_h, 1e-6)
+    top = floor_h + max(params.profile_span_frac, params.end_trim_frac * 2) * span
     heights = np.linspace(
-        floor_h + params.end_trim_frac * span, max_h - params.end_trim_frac * span, params.n_levels
+        floor_h + params.end_trim_frac * span, top - params.end_trim_frac * span, params.n_levels
     )
     out = []
     for h in heights:

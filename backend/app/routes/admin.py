@@ -373,3 +373,46 @@ async def admin_clear_scans(
         "objects_deleted": sum(d["objects_deleted"] for d in deleted),
         "runs_deleted": orphans,
     }
+
+
+@router.post("/scans/{job_id}/rerun", status_code=201, response_model=ScanCreated)
+async def admin_rerun_scan(
+    job_id: str,
+    store: JobStore = Depends(get_store),
+    settings: Settings = Depends(get_app_settings),
+) -> ScanCreated:
+    """New job from a stored video with the same model/truths/notes — repeatability
+    runs and speed-knob comparisons without re-uploading."""
+    src = store.get_job(job_id)
+    if src is None:
+        raise HTTPException(404, "Scan not found.")
+    if not src.video_path:
+        raise HTTPException(409, "This run has no stored video to re-run.")
+    try:
+        data = store.get_object(src.video_path)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(409, "The stored video is no longer available.") from exc
+    cfg = dict(src.config or {})
+    config = {
+        **cfg,
+        **settings.measure_config(),  # current knobs; truths/model carry over
+        "keyframe_interval_seconds": settings.keyframe_interval_seconds,
+        "keyframe_max_frames": settings.keyframe_max_frames,
+        "source": "rerun",
+        "rerun_of": src.id,
+        "model_name": cfg.get("model_name"),
+        "truth_mm": cfg.get("truth_mm"),
+        "truth_min_mm": cfg.get("truth_min_mm"),
+        "reference_point": cfg.get("reference_point"),
+        "notes": cfg.get("notes"),
+    }
+    job = store.create_job(config=config)
+    video_key = paths.video_key(job.id)
+    try:
+        store.put_object(video_key, data, "video/mp4")
+        store.update_job(job.id, video_path=video_key)
+    except Exception:
+        store.delete_job(job.id)
+        raise
+    store.patch_result(job.id, {"upload_bytes": len(data), "stored_bytes": len(data)})
+    return ScanCreated(id=job.id, status=JobStatus.PENDING)

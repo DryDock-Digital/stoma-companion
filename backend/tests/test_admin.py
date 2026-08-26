@@ -192,3 +192,20 @@ def test_clear_all_requires_confirmation():
     assert r["jobs_deleted"] == 3
     assert client.get("/admin/scans").json()["jobs"] == []
     assert store.queue_stats()["counts"] == {}
+
+
+def test_rerun_copies_video_and_truths():
+    client, store, runs = _client()
+    job_id = client.post(
+        "/admin/scans",
+        files={"video": ("m1.mov", b"video-bytes", "video/quicktime")},
+        data={"model_name": "A", "truth_mm": "33.0", "truth_min_mm": "30.0", "notes": "t1"},
+    ).json()["id"]
+    r = client.post(f"/admin/scans/{job_id}/rerun")
+    assert r.status_code == 201
+    new = store.get_job(r.json()["id"])
+    assert new.id != job_id and new.status == JobStatus.PENDING
+    assert store.get_object(new.video_path) == b"video-bytes"
+    assert new.config["model_name"] == "A" and new.config["truth_min_mm"] == 30.0
+    assert new.config["rerun_of"] == job_id and new.config["source"] == "rerun"
+    assert client.post("/admin/scans/nope/rerun").status_code == 404

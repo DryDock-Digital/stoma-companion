@@ -15,6 +15,26 @@ function pickMimeType(): string | undefined {
   return candidates.find((t) => "MediaRecorder" in window && MediaRecorder.isTypeSupported(t));
 }
 
+/** Capped at 1080p30 so uploads and keyframe extraction stay fast (FR-11). */
+const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
+  facingMode: { ideal: "environment" },
+  width: { ideal: 1920, max: 1920 },
+  height: { ideal: 1080, max: 1080 },
+  frameRate: { ideal: 30, max: 30 },
+};
+const VIDEO_BITS_PER_SECOND = 8_000_000;
+
+async function openCamera(): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video: VIDEO_CONSTRAINTS, audio: false });
+  } catch (err) {
+    const name = err instanceof DOMException || err instanceof Error ? err.name : "";
+    if (name !== "OverconstrainedError" && name !== "ConstraintNotSatisfiedError") throw err;
+    // Device can't meet the caps — retry once with just the camera facing.
+    return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+  }
+}
+
 function cameraErrorCopy(err: unknown): string {
   const name = err instanceof DOMException || err instanceof Error ? err.name : "";
   switch (name) {
@@ -78,10 +98,7 @@ export function Capture({
         return;
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 } },
-          audio: false,
-        });
+        const stream = await openCamera();
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -119,7 +136,10 @@ export function Capture({
     if (!stream) return fail(COPY.capture.errors.generic);
     try {
       const mimeType = pickMimeType();
-      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const rec = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: VIDEO_BITS_PER_SECOND,
+      });
       chunksRef.current = [];
       rec.ondataavailable = (e) => {
         if (e.data.size) chunksRef.current.push(e.data);

@@ -8,6 +8,7 @@ import {
   createScan,
   deleteScan,
   describeError,
+  getHealth,
   getScan,
   gcodeUrl,
   hasBackend,
@@ -15,9 +16,11 @@ import {
   parseShape,
   patchScan,
   reportCsvUrl,
+  rerunScan,
   type AdminScanDetail,
   type AdminScanSummary,
   type PatchRunInput,
+  type QueueHealth,
 } from "../api/admin";
 import { OutlineChart } from "../components/OutlineChart";
 import { WidthChart } from "../components/admin/WidthChart";
@@ -125,7 +128,8 @@ export function Admin() {
 // 1. Runs list
 // ---------------------------------------------------------------------------
 
-const LIST_REFRESH_MS = 10_000;
+const LIST_REFRESH_MS = 5_000;
+const STALE_CLAIM_S = 300;
 
 function RunsList() {
   const [jobs, setJobs] = useState<AdminScanSummary[] | null>(null);
@@ -133,18 +137,36 @@ function RunsList() {
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
   const [clearMsg, setClearMsg] = useState<{ tone: "info" | "error"; text: string } | null>(null);
+  const [health, setHealth] = useState<QueueHealth | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState<string | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const list = await listScans(50, signal);
-      setJobs(list);
+    const [list, h] = await Promise.allSettled([listScans(50, signal), getHealth(signal)]);
+    if (signal?.aborted) return;
+    if (list.status === "fulfilled") {
+      setJobs(list.value);
       setError(null);
       setRefreshedAt(Date.now());
-    } catch (err) {
-      if (signal?.aborted) return;
-      setError(describeError(err));
-    }
+    } else setError(describeError(list.reason));
+    if (h.status === "fulfilled") {
+      setHealth(h.value);
+      setHealthError(null);
+    } else setHealthError(describeError(h.reason));
   }, []);
+
+  const rerun = async (id: string) => {
+    setRerunning(id);
+    setClearMsg(null);
+    try {
+      const created = await rerunScan(id);
+      window.location.hash = href.run(created.id);
+    } catch (err) {
+      setClearMsg({ tone: "error", text: `Re-run failed: ${describeError(err)}` });
+    } finally {
+      setRerunning(null);
+    }
+  };
 
   useEffect(() => {
     const ac = new AbortController();
@@ -203,6 +225,7 @@ function RunsList() {
 
   return (
     <div className="space-y-4">
+      <QueueStrip health={health} error={healthError} />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
         <Stat label="runs" value={String(agg.total)} />
         <Stat label="measured" value={String(agg.measured)} />
@@ -230,7 +253,7 @@ function RunsList() {
         title="Runs"
         right={
           <div className="flex items-center gap-3 text-xs text-faint">
-            {anyRunning && <span className="text-cyan">auto-refresh 10 s</span>}
+            {anyRunning && <span className="text-cyan">auto-refresh 5 s</span>}
             {refreshedAt && <span>refreshed {fmtWhen(new Date(refreshedAt).toISOString())}</span>}
             <button className="rounded-md border border-line px-2 py-0.5 hover:text-ink" onClick={() => void load()}>
               refresh
@@ -275,7 +298,8 @@ function RunsList() {
                 <th className="pb-2 pr-3">result</th>
                 <th className="pb-2 pr-3 text-right">total</th>
                 <th className="pb-2 pr-3">engine</th>
-                <th className="pb-2">when</th>
+                <th className="pb-2 pr-3">when</th>
+                <th className="pb-2" />
               </tr>
             </thead>
             <tbody>
@@ -302,9 +326,19 @@ function RunsList() {
                   </td>
                   <td className="py-2 pr-3 text-right font-mono">{fmtSec(j.total_s)}</td>
                   <td className="py-2 pr-3 text-xs text-muted">{j.engine ?? "—"}</td>
-                  <td className="py-2 text-xs text-muted" title={fmtIso(j.created_at)}>
+                  <td className="py-2 pr-3 text-xs text-muted" title={fmtIso(j.created_at)}>
                     {fmtWhen(j.created_at)}
                     {j.error && <div className="max-w-[16rem] truncate text-danger" title={j.error}>{j.error}</div>}
+                  </td>
+                  <td className="py-2 text-right">
+                    <button
+                      className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:text-ink disabled:opacity-40"
+                      disabled={rerunning !== null}
+                      onClick={() => void rerun(j.id)}
+                      title="Create a new run from this run's stored video"
+                    >
+                      {rerunning === j.id ? "re-running…" : "Re-run"}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -319,6 +353,40 @@ function RunsList() {
 function devTone(dev: number | null, tol: number): string {
   if (dev == null) return "text-faint";
   return Math.abs(dev) <= tol ? "text-success" : "text-danger";
+}
+
+function QueueStrip({ health, error }: { health: QueueHealth | null; error: string | null }) {
+  if (!health) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface/60 px-4 py-2 text-xs text-faint">
+        <span className="uppercase tracking-wider">queue</span>
+        <span>{error ? `unavailable: ${error}` : "loading…"}</span>
+      </div>
+    );
+  }
+  const counts = Object.entries(health.queue?.counts ?? {}).filter(([, n]) => n > 0);
+  const age = health.queue?.oldest_claim_age_s ?? null;
+  const stale = age != null && age > STALE_CLAIM_S;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface/60 px-4 py-2 text-xs">
+      <span className="uppercase tracking-wider text-faint">queue</span>
+      <span className={`font-mono ${health.status === "ok" ? "text-success" : "text-danger"}`}>{health.status}</span>
+      {counts.length === 0 ? (
+        <span className="text-faint">idle</span>
+      ) : (
+        counts.map(([status, n]) => (
+          <span key={status} className="rounded-full border border-line px-2 py-0.5 font-mono text-muted">
+            {status} <span className="text-ink">{n}</span>
+          </span>
+        ))
+      )}
+      <span className="ml-auto font-mono text-faint">
+        oldest claim {age != null ? `${Math.round(age)} s` : "—"}
+      </span>
+      {stale && <span className="text-danger">claim older than {STALE_CLAIM_S} s — worker may be stuck</span>}
+      {error && <span className="text-danger">stale: {error}</span>}
+    </div>
+  );
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "ok" | "fail" }) {
@@ -473,7 +541,7 @@ function Input({ value, onChange, placeholder, type = "text", step, disabled }: 
 // 3. Run detail
 // ---------------------------------------------------------------------------
 
-const DETAIL_POLL_MS = 5_000;
+const DETAIL_POLL_MS = 2_000;
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
@@ -503,6 +571,8 @@ function RunDetail({ id }: { id: string }) {
   const [notFound, setNotFound] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState(false);
+  const [rerunError, setRerunError] = useState<string | null>(null);
   const stale = useRef(false);
 
   const load = useCallback(
@@ -539,6 +609,19 @@ function RunDetail({ id }: { id: string }) {
     } catch (err) {
       setDeleteError(describeError(err));
       setDeleting(false);
+    }
+  };
+
+  const rerun = async () => {
+    setRerunning(true);
+    setRerunError(null);
+    try {
+      const created = await rerunScan(id);
+      window.location.hash = href.run(created.id);
+    } catch (err) {
+      setRerunError(describeError(err));
+    } finally {
+      setRerunning(false);
     }
   };
 
@@ -589,6 +672,7 @@ function RunDetail({ id }: { id: string }) {
     <div className="space-y-4">
       {error && <Notice tone="warn">Last refresh failed: {error} (showing previous data)</Notice>}
       {deleteError && <Notice tone="error">Delete failed: {deleteError}</Notice>}
+      {rerunError && <Notice tone="error">Re-run failed: {rerunError}</Notice>}
 
       {/* header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -596,7 +680,7 @@ function RunDetail({ id }: { id: string }) {
           <div className="flex items-center gap-3">
             <h1 className="font-mono text-lg">{job.id}</h1>
             <StatusBadge status={job.status} />
-            {running && <span className="text-xs text-cyan">polling 5 s</span>}
+            {running && <span className="text-xs text-cyan">polling 2 s</span>}
           </div>
           <div className="mt-1 text-sm text-muted">
             {job.model_name ?? <span className="text-faint">unnamed model</span>} · created {fmtIso(job.created_at)} · updated {fmtWhen(job.updated_at)}
@@ -616,6 +700,14 @@ function RunDetail({ id }: { id: string }) {
               print 1:1 outline
             </a>
           )}
+          <button
+            className="rounded-md border border-line-strong bg-white/[0.04] px-2.5 py-1 text-ink hover:bg-white/[0.08] disabled:opacity-40"
+            disabled={rerunning || deleting || !a.video_url}
+            onClick={() => void rerun()}
+            title={a.video_url ? "Create a new run from this run's stored video (same model/truths/notes)" : "No stored video to re-run"}
+          >
+            {rerunning ? "re-running…" : "Re-run"}
+          </button>
           <button
             className="rounded-md border border-danger/60 px-2.5 py-1 text-danger hover:bg-danger/10 disabled:opacity-40"
             disabled={deleting}

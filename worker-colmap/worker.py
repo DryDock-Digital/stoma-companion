@@ -61,10 +61,11 @@ def run_queue() -> None:
         ColmapReconstructor(timeout_s=settings.reconstruct_timeout_s),
         worker_id=worker_id,
         measurer=measurer,
+        archive_keyframes=settings.archive_keyframes,
         **poller_kwargs,
     )
     measurement = MeasurementWorker(store, measurer, worker_id=worker_id, **poller_kwargs)
-    poll = float(os.environ.get("WORKER_POLL_INTERVAL", "5"))
+    poll = float(os.environ.get("WORKER_POLL_INTERVAL", "1"))
     CombinedWorker(reconstruction, measurement).run_forever(poll_interval=poll)
 
 

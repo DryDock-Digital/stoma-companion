@@ -225,6 +225,21 @@ export function clearAllScans(): Promise<ClearedRuns> {
   return request<ClearedRuns>(`/admin/scans?confirm=all`, { method: "DELETE" });
 }
 
+/** Creates a new job from a run's stored video, carrying over model/truths/notes. */
+export function rerunScan(id: string): Promise<CreatedRun> {
+  return request<CreatedRun>(`/admin/scans/${encodeURIComponent(id)}/rerun`, { method: "POST" });
+}
+
+export interface QueueHealth {
+  status: string;
+  queue: { counts: Record<string, number>; oldest_claim_age_s: number | null };
+  keyframe_worker?: unknown;
+}
+
+export function getHealth(signal?: AbortSignal): Promise<QueueHealth> {
+  return request<QueueHealth>(`/health`, { signal });
+}
+
 /** XHR so we get upload progress (fetch has no upload progress events). */
 export function createScan(input: NewRunInput, onProgress?: (fraction: number) => void): Promise<CreatedRun> {
   const form = new FormData();

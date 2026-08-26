@@ -383,3 +383,43 @@ def test_attempts_are_per_stage():
     MeasurementWorker(store, FakeMeasurer(), worker_id="m1").run_once()
     assert store.get_job(job.id).status == JobStatus.MEASURED
     assert store.get_job(job.id).attempts == 0
+
+
+def test_worker_claims_pending_job_and_extracts_locally(monkeypatch):
+    """No keyframe stage in between: the worker downloads the video, extracts frames
+    on its own disk, reconstructs, measures, then archives the frames."""
+    from app import keyframes as kf
+
+    store = InMemoryJobStore()
+    job = store.create_job(config={"keyframe_interval_seconds": 0.5, "keyframe_max_frames": 100})
+    store.put_object(paths.video_key(job.id), b"fake-video", "video/mp4")
+    store.update_job(job.id, video_path=paths.video_key(job.id))
+
+    def fake_extract(video_path, out_dir, params, **kw):
+        assert video_path.read_bytes() == b"fake-video"
+        assert params.interval_seconds == 0.5
+        out_dir.mkdir(parents=True, exist_ok=True)
+        frames = []
+        for i in range(9):
+            f = out_dir / f"frame_{i:05d}.jpg"
+            f.write_bytes(b"jpg")
+            frames.append(f)
+        return kf.KeyframeResult(count=9, frame_paths=frames, calibration_path=None)
+
+    monkeypatch.setattr(kf, "extract_keyframes", fake_extract)
+    m = FakeMeasurer()
+    w = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1", measurer=m)
+    assert w.run_once() is True
+    done = store.get_job(job.id)
+    assert done.status == JobStatus.MEASURED and done.keyframe_count == 9
+    t = done.result["timings_s"]
+    assert {"download", "extract", "reconstruct", "upload", "measure", "archive"} <= set(t)
+    assert len(store.list_objects(paths.keyframes_prefix(job.id))) == 9  # archived after
+    assert m.calls[0][2] == 9
+
+
+def test_pending_without_video_is_not_claimed_by_worker():
+    store = InMemoryJobStore()
+    store.create_job()
+    w = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1")
+    assert w.run_once() is False

@@ -23,13 +23,19 @@ class Settings(BaseSettings):
     #: per-object cap of the storage backend (Supabase: 50 MB on the current plan).
     #: Videos over this are re-encoded to fit (app/video.py); meshes are gzip'd.
     storage_object_max_mb: int = 48
-    #: run the keyframe stage worker inside the API process (thread). Off when a
-    #: separate `python -m app.keyframe_worker` process handles it.
-    run_keyframe_worker: bool = True
+    #: run the keyframe stage worker inside the API process (thread). Off by default:
+    #: the reconstruction worker claims `pending` jobs and extracts keyframes itself
+    #: from the video (one download instead of ~90 per-frame round trips). Turn on
+    #: only for a worker that cannot run ffmpeg.
+    run_keyframe_worker: bool = False
 
     # --- Keyframe extraction (ported VideoFrameExporter defaults) ---
     keyframe_interval_seconds: float = 0.35
     keyframe_max_frames: int = 350
+
+    #: keyframes kept in storage after a run (thumbnails / fixtures). The full set is
+    #: archived after measurement, off the critical path.
+    archive_keyframes: bool = True
 
     # --- Measurement (carried onto every job's config → reproducible) ---
     grace_ring_mm: float = 3.0  # FR-07, configurable, never hard-coded

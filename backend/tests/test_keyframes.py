@@ -47,3 +47,41 @@ def test_sample_times_respects_frame_cap():
 def test_sample_times_rejects_unusable_duration():
     with pytest.raises(kf.KeyframeError):
         kf.sample_times(0.04)
+
+
+def test_single_pass_matches_schedule(tmp_path):
+    """The one-process fps path yields the same frame count as `sample_times`."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg not installed")
+    from app import keyframes as kf
+
+    clip = tmp_path / "clip.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=320x240:rate=30",
+            "-t",
+            "4.2",
+            "-pix_fmt",
+            "yuv420p",
+            str(clip),
+        ],
+        check=True,
+    )
+    params = kf.KeyframeParams(interval_seconds=0.35, max_frames=350)
+    fast = kf.extract_keyframes(clip, tmp_path / "fast", params)
+    slow = kf.extract_keyframes(clip, tmp_path / "slow", params, single_pass=False)
+    expected = kf.sample_times(kf.probe_duration(clip), 0.35, 350)
+    assert fast.count == slow.count == len(expected)
+    assert fast.calibration_path is not None

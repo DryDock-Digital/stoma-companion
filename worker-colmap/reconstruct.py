@@ -62,6 +62,23 @@ class ColmapReconstructor:
         if not cameras:
             raise ReconstructError("COLMAP registered no images (no poses exported)")
         n_images = len(list(keyframe_dir.glob("frame_*.jpg")))
+        settings_used = {
+            k: os.environ.get(k, v)
+            for k, v in (
+                ("COLMAP_USE_GPU", "1"),
+                ("COLMAP_MAX_IMAGE_SIZE", "1600"),
+                ("COLMAP_MAX_FEATURES", "4096"),
+                ("COLMAP_SEQ_OVERLAP", "10"),
+                ("MVS_RESOLUTION_LEVEL", "2"),
+                ("MVS_NUMBER_VIEWS", "4"),
+                ("MVS_MAX_RESOLUTION", "1200"),
+                ("MESH_DECIMATE", "0.3"),
+            )
+        }
+        gpu_name = None
+        gpu_log = work_dir / "gpu.txt"
+        if gpu_log.exists():
+            gpu_name = gpu_log.read_text().strip() or None
         return ReconstructionOutput(
             mesh_path=output_obj,
             cameras=cameras,
@@ -69,6 +86,8 @@ class ColmapReconstructor:
                 "engine": self.name,
                 "input_frames": n_images,
                 "registered_frames": len(cameras),
-                "gpu": os.environ.get("COLMAP_USE_GPU", "1") == "1",
+                "gpu": settings_used["COLMAP_USE_GPU"] == "1",
+                "gpu_name": gpu_name,
+                "settings": settings_used,
             },
         )

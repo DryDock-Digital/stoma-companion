@@ -193,26 +193,69 @@ class ReconstructionWorker(_Poller):
         reconstructor: Reconstructor,
         worker_id: str,
         measurer: Measurer | None = None,
+        *,
+        extract_keyframes: bool = True,
+        archive_keyframes: bool = True,
         **poller_kwargs,
     ) -> None:
         super().__init__(store, worker_id, **poller_kwargs)
         self.reconstructor = reconstructor
         self.measurer = measurer
+        #: claim `pending` jobs and extract keyframes from the video locally (one
+        #: download instead of ~90 per-frame round trips each way)
+        self.extract_keyframes = extract_keyframes
+        #: after measurement, push the full keyframe set to storage (thumbnails,
+        #: fixtures, the standalone MeasurementWorker) — off the critical path
+        self.archive_keyframes = archive_keyframes
 
     def claim(self) -> Job | None:
-        """Atomically take the next reconstructable job (keyframes_ready →
-        reconstructing). Returns None when the queue is empty."""
-        return self.store.claim_next_job(
+        """Atomically take the next job: `keyframes_ready` first (already
+        extracted), else a `pending` one whose video is stored (we extract).
+        Returns None when the queue is empty."""
+        job = self.store.claim_next_job(
             self.worker_id,
             self.reconstructor.name,
             JobStatus.KEYFRAMES_READY,
             JobStatus.RECONSTRUCTING,
         )
+        if job is None and self.extract_keyframes:
+            job = self.store.claim_next_job(
+                self.worker_id, self.reconstructor.name, JobStatus.PENDING, JobStatus.EXTRACTING
+            )
+        return job
+
+    def _extract_locally(self, job: Job, keyframe_dir: Path, tmp_dir: Path, timer) -> Job:
+        """pending → extracting → (frames on local disk) → reconstructing."""
+        from .keyframes import KeyframeParams, extract_keyframes
+
+        cfg = job.config or {}
+        params = KeyframeParams(
+            interval_seconds=float(cfg.get("keyframe_interval_seconds", 0.35)),
+            max_frames=int(cfg.get("keyframe_max_frames", 350)),
+        )
+        video = tmp_dir / "input.bin"
+        with timer.stage("download"):
+            video.write_bytes(self.store.get_object(job.video_path or paths.video_key(job.id)))
+        with timer.stage("extract"):
+            result = extract_keyframes(video, keyframe_dir, params)
+        return self.store.update_job(
+            job.id,
+            status=JobStatus.RECONSTRUCTING,
+            keyframe_count=result.count,
+            keyframes_prefix=paths.keyframes_prefix(job.id),
+        )
+
+    def _archive_keyframes(self, job_id: str, keyframe_dir: Path, timer) -> None:
+        with timer.stage("archive"):
+            for f in sorted(keyframe_dir.glob("*.jpg")):
+                self.store.put_object(
+                    f"{paths.keyframes_prefix(job_id)}{f.name}", f.read_bytes(), "image/jpeg"
+                )
 
     def process(self, job: Job) -> None:
         """Download keyframes, reconstruct, upload mesh + poses, mark mesh_ready;
         then measure inline when a measurer is attached."""
-        stage = "reconstruct"
+        stage = "extract" if job.status == JobStatus.EXTRACTING else "reconstruct"
         try:
             with tempfile.TemporaryDirectory() as tmp, self.heartbeat(job.id):
                 tmp_dir = Path(tmp)
@@ -222,8 +265,12 @@ class ReconstructionWorker(_Poller):
                 work_dir.mkdir()
                 timer = StageTimer()
 
-                with timer.stage("download"):
-                    _download_keyframes(self.store, job, keyframe_dir)
+                if job.status == JobStatus.EXTRACTING:
+                    job = self._extract_locally(job, keyframe_dir, tmp_dir, timer)
+                    stage = "reconstruct"
+                else:
+                    with timer.stage("download"):
+                        _download_keyframes(self.store, job, keyframe_dir)
                 with timer.stage("reconstruct"):
                     out = self.reconstructor.reconstruct(keyframe_dir, work_dir)
                 if not Path(out.mesh_path).exists():
@@ -284,6 +331,17 @@ class ReconstructionWorker(_Poller):
                     out.cameras,
                     keyframe_dir,
                 )
+                # the job is already `measured` for the client; archive frames after
+                if self.archive_keyframes and not self.store.list_objects(
+                    paths.keyframes_prefix(job.id)
+                ):
+                    try:
+                        self._archive_keyframes(job.id, keyframe_dir, timer)
+                        self.store.patch_result(
+                            job.id, {"timings_s": {"archive": timer.get("archive")}}
+                        )
+                    except Exception:  # noqa: BLE001 — never fail a measured job
+                        log.exception("keyframe archive failed for job %s", job.id)
         except Exception as exc:  # noqa: BLE001 — record the failure on the job
             _fail(self.store, job.id, exc, stage)
 

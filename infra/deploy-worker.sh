@@ -5,8 +5,11 @@
 # measurement/queue knobs (all allowlisted below), and runs from the repo root
 # because the image copies both backend/ and worker-colmap/.
 #
-#   ./infra/deploy-worker.sh            # CPU image (Dockerfile.cpu) — current droplet (D15)
-#   WORKER_DOCKERFILE=Dockerfile ./infra/deploy-worker.sh   # CUDA image on a GPU droplet
+#   ./infra/deploy-worker.sh                       # CPU image (Dockerfile.cpu) on DROPLET_HOST (D15)
+#   WORKER_HOST=<gpu-ip> WORKER_DOCKERFILE=Dockerfile ./infra/deploy-worker.sh   # CUDA image on the GPU droplet
+#
+# WORKER_HOST (env or .env) overrides DROPLET_HOST so the worker can live on its own
+# box; first run `infra/gpu-host-setup.sh` on a GPU host.
 #
 set -euo pipefail
 
@@ -16,7 +19,7 @@ ENV_FILE="$REPO_ROOT/.env"
 [[ -f "$ENV_FILE" ]] || { echo "error: $ENV_FILE not found (copy .env.example → .env)"; exit 1; }
 getenv() { grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- || true; }
 
-HOST="$(getenv DROPLET_HOST)"
+HOST="${WORKER_HOST:-$(getenv WORKER_HOST)}"; HOST="${HOST:-$(getenv DROPLET_HOST)}"
 USER="$(getenv DROPLET_USER)"; USER="${USER:-root}"
 SSH_KEY="$(getenv DROPLET_SSH_KEY)"; SSH_KEY="${SSH_KEY:-$HOME/.ssh/stoma_droplet}"; SSH_KEY="${SSH_KEY/#\~/$HOME}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/stoma}"
@@ -28,7 +31,7 @@ GPU_FLAG=""; [[ "$DOCKERFILE" == "Dockerfile" ]] && GPU_FLAG="--gpus all"
 [[ -n "$HOST" ]]    || { echo "error: DROPLET_HOST not set in .env"; exit 1; }
 [[ -f "$SSH_KEY" ]] || { echo "error: SSH key not found: $SSH_KEY"; exit 1; }
 
-ENV_ALLOWLIST='^(SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|SUPABASE_STORAGE_BUCKET|GRACE_RING_MM|TOLERANCE_MM|MARKER_SIDE_MM|ARUCO_DICT|GCODE_DIALECT|CLAIM_TIMEOUT_S|MAX_ATTEMPTS|RECONSTRUCT_TIMEOUT_S|MEASURE_TIMEOUT_S|WORKER_ID|WORKER_POLL_INTERVAL)='
+ENV_ALLOWLIST='^(SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|SUPABASE_STORAGE_BUCKET|GRACE_RING_MM|TOLERANCE_MM|MARKER_SIDE_MM|ARUCO_DICT|GCODE_DIALECT|CLAIM_TIMEOUT_S|MAX_ATTEMPTS|RECONSTRUCT_TIMEOUT_S|MEASURE_TIMEOUT_S|ARCHIVE_KEYFRAMES|WORKER_ID|WORKER_POLL_INTERVAL|COLMAP_MAX_IMAGE_SIZE|COLMAP_MAX_FEATURES|COLMAP_SEQ_OVERLAP|MVS_RESOLUTION_LEVEL|MVS_NUMBER_VIEWS|MVS_MAX_RESOLUTION|MESH_DECIMATE)='
 
 SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -i "$SSH_KEY")
 remote() { ssh "${SSH_OPTS[@]}" "$USER@$HOST" "$@"; }

@@ -131,17 +131,26 @@ def probe_duration(video_path: Path) -> float:
         raise KeyframeError(f"Could not read duration from {video_path}") from exc
 
 
-def _extract_frame(
-    video_path: Path, timestamp: float, out_path: Path, params: KeyframeParams
-) -> bool:
-    """Seek to `timestamp` and write a single downscaled JPEG. Returns success;
-    the legacy loop tolerates individual failed frames (`continue`)."""
+def _scale_filter(params: KeyframeParams) -> str:
     # Downscale only if larger than max_dimension, preserving aspect (mirrors the
-    # generator.maximumSize behaviour). -q:v 2 ≈ high-quality JPEG.
-    scale = (
+    # generator.maximumSize behaviour).
+    return (
         f"scale='min({params.max_dimension},iw)':'min({params.max_dimension},ih)'"
         ":force_original_aspect_ratio=decrease"
     )
+
+
+def _jpeg_q(params: KeyframeParams) -> str:
+    # ffmpeg -q:v 2 (best) … 31; map the legacy 0–1 quality onto that range
+    q = 2 + round((1.0 - max(0.0, min(1.0, params.jpeg_quality))) * 29)
+    return str(max(2, min(31, q)))
+
+
+def _extract_frame(
+    video_path: Path, timestamp: float, out_path: Path, params: KeyframeParams
+) -> bool:
+    """Seek to `timestamp` and write a single downscaled JPEG (used for the t=0
+    calibration still and as the per-frame fallback)."""
     result = subprocess.run(
         [
             "ffmpeg",
@@ -155,9 +164,9 @@ def _extract_frame(
             "-frames:v",
             "1",
             "-vf",
-            scale,
+            _scale_filter(params),
             "-q:v",
-            "2",
+            _jpeg_q(params),
             "-y",
             str(out_path),
         ],
@@ -166,16 +175,55 @@ def _extract_frame(
     return result.returncode == 0 and out_path.exists()
 
 
+def _extract_all_single_pass(
+    video_path: Path, output_dir: Path, times: list[float], params: KeyframeParams
+) -> list[Path]:
+    """One ffmpeg process for the whole schedule: `fps=1/interval` emits the frame
+    nearest t = 0, interval, 2·interval … — exactly `sample_times()` — capped at
+    len(times). ~10× faster than one seek+decode process per frame (36 s → ~3 s on
+    the first real 30 s clip)."""
+    interval = clamp_interval(params.interval_seconds)
+    pattern = output_dir / "frame_%05d.jpg"
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-i",
+            str(video_path),
+            "-vf",
+            f"fps=1/{interval:.6f}:round=near,{_scale_filter(params)}",
+            "-frames:v",
+            str(len(times)),
+            "-q:v",
+            _jpeg_q(params),
+            "-start_number",
+            "0",
+            "-y",
+            str(pattern),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise KeyframeError(f"ffmpeg keyframe pass failed: {result.stderr[-400:]}")
+    return sorted(output_dir.glob("frame_*.jpg"))
+
+
 def extract_keyframes(
     video_path: Path,
     output_dir: Path,
     params: KeyframeParams | None = None,
+    *,
+    single_pass: bool = True,
 ) -> KeyframeResult:
     """Extract keyframes from a local video into `output_dir`.
 
-    Frames are named frame_00000.jpg… and re-indexed by successful writes (so the
-    numbering is dense even if a seek fails), exactly like the legacy exporter.
-    A t=0 `calibration_top.jpg` still is written first (best-effort).
+    Frames are named frame_00000.jpg… with dense numbering, exactly like the legacy
+    exporter. A t=0 `calibration_top.jpg` still is written first (best-effort). The
+    default is one ffmpeg pass over the clip; `single_pass=False` keeps the legacy
+    seek-per-frame path (fallback if a container confuses the fps filter).
     """
     _require_binaries()
     params = params or KeyframeParams()
@@ -192,10 +240,19 @@ def extract_keyframes(
         calibration_path = None
 
     frame_paths: list[Path] = []
-    for timestamp in times:
-        out_path = output_dir / f"frame_{len(frame_paths):05d}.jpg"
-        if _extract_frame(video_path, timestamp, out_path, params):
-            frame_paths.append(out_path)
+    if single_pass:
+        try:
+            frame_paths = _extract_all_single_pass(video_path, output_dir, times, params)
+        except KeyframeError:
+            frame_paths = []
+    if len(frame_paths) < MIN_USABLE_FRAMES:
+        for f in frame_paths:
+            f.unlink(missing_ok=True)
+        frame_paths = []
+        for timestamp in times:
+            out_path = output_dir / f"frame_{len(frame_paths):05d}.jpg"
+            if _extract_frame(video_path, timestamp, out_path, params):
+                frame_paths.append(out_path)
 
     if len(frame_paths) < MIN_USABLE_FRAMES:
         raise KeyframeError(
@@ -206,5 +263,5 @@ def extract_keyframes(
         count=len(frame_paths),
         frame_paths=frame_paths,
         calibration_path=calibration_path,
-        sample_times=times,
+        sample_times=times[: len(frame_paths)],
     )

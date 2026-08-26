@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# COLMAP + OpenMVS reconstruction: keyframe JPEGs in → textured OBJ mesh out.
+# COLMAP + OpenMVS reconstruction: keyframe JPEGs in → decimated OBJ mesh + poses out.
 # Implements the "reconstruct" half of docs/queue-contract.md. Engine internals
 # live entirely here; the queue never sees any of it.
 #
 #   pipeline.sh <image_dir> <work_dir> <output_obj>
 #
 # Assumes colmap + the OpenMVS tools (InterfaceCOLMAP, DensifyPointCloud,
-# ReconstructMesh) and python3+trimesh are on PATH — see Dockerfile. Runs on a CUDA GPU
-# droplet (sizing decided at P1-5).
+# ReconstructMesh) and python3+trimesh are on PATH — see the Dockerfiles.
+#
+# Speed knobs (env; defaults chosen by the keyframe/resolution sweep on real footage,
+# recorded in decisions.md). Every run stamps the values it used into the job's
+# diagnostics (reconstruct.py), so a number is never separated from its settings.
 set -euo pipefail
 
 IMAGE_DIR="${1:?usage: pipeline.sh <image_dir> <work_dir> <output_obj>}"
@@ -20,28 +23,44 @@ DENSE="$WORK_DIR/dense"
 MVS="$WORK_DIR/mvs"
 mkdir -p "$SPARSE" "$DENSE" "$MVS"
 
-# 1 on the GPU image, 0 on the CPU image (COLMAP_USE_GPU set in the Dockerfile).
-USE_GPU="${COLMAP_USE_GPU:-1}"
+USE_GPU="${COLMAP_USE_GPU:-1}"                 # 1 on the CUDA image, 0 on the CPU image
+MAX_IMAGE_SIZE="${COLMAP_MAX_IMAGE_SIZE:-1600}" # SIFT + undistorted image longest edge
+MAX_FEATURES="${COLMAP_MAX_FEATURES:-4096}"
+SEQ_OVERLAP="${COLMAP_SEQ_OVERLAP:-10}"        # frames come from one continuous orbit
+MVS_RES_LEVEL="${MVS_RESOLUTION_LEVEL:-2}"     # 0 = full res, each level halves
+MVS_VIEWS="${MVS_NUMBER_VIEWS:-4}"
+MVS_MAX_RES="${MVS_MAX_RESOLUTION:-1200}"
+DECIMATE="${MESH_DECIMATE:-0.3}"
 
-echo "[colmap] feature extraction (gpu=$USE_GPU)"
+# Record which GPU (if any) this run had — surfaces on the admin run page.
+if command -v nvidia-smi >/dev/null 2>&1; then
+  nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 > "$WORK_DIR/gpu.txt" || true
+fi
+echo "[env] gpu=$USE_GPU max_image=$MAX_IMAGE_SIZE feats=$MAX_FEATURES overlap=$SEQ_OVERLAP mvs_level=$MVS_RES_LEVEL views=$MVS_VIEWS decimate=$DECIMATE"
+
+echo "[colmap] feature extraction"
 colmap feature_extractor \
   --database_path "$DB" \
   --image_path "$IMAGE_DIR" \
   --ImageReader.single_camera 1 \
-  --SiftExtraction.use_gpu "$USE_GPU"
+  --SiftExtraction.use_gpu "$USE_GPU" \
+  --SiftExtraction.max_image_size "$MAX_IMAGE_SIZE" \
+  --SiftExtraction.max_num_features "$MAX_FEATURES"
 
-# Frames come from a continuous orbit video → sequential matching is both faster
-# and more robust than exhaustive for ordered input.
-echo "[colmap] sequential matching (gpu=$USE_GPU)"
-colmap sequential_matcher --database_path "$DB" --SiftMatching.use_gpu "$USE_GPU"
+echo "[colmap] sequential matching"
+colmap sequential_matcher \
+  --database_path "$DB" \
+  --SiftMatching.use_gpu "$USE_GPU" \
+  --SequentialMatching.overlap "$SEQ_OVERLAP" \
+  --SequentialMatching.loop_detection 0
 
 echo "[colmap] sparse mapping"
 colmap mapper \
   --database_path "$DB" \
   --image_path "$IMAGE_DIR" \
-  --output_path "$SPARSE"
+  --output_path "$SPARSE" \
+  --Mapper.ba_global_max_num_iterations 25
 
-# mapper writes sparse/0 (the largest reconstructed model).
 MODEL="$SPARSE/0"
 if [[ ! -d "$MODEL" ]]; then
   echo "[colmap] mapping produced no model — reconstruction failed" >&2
@@ -53,35 +72,34 @@ colmap image_undistorter \
   --image_path "$IMAGE_DIR" \
   --input_path "$MODEL" \
   --output_path "$DENSE" \
-  --output_type COLMAP
+  --output_type COLMAP \
+  --max_image_size "$MAX_IMAGE_SIZE"
 
-# Export camera poses as TXT next to the mesh — the measurement stage (P1-10) uses
-# them to triangulate the ArUco marker for real-world scale + orientation.
+# Poses as TXT into the work dir — reconstruct.py converts them to the engine-neutral
+# poses.json (docs/queue-contract.md).
 echo "[colmap] export sparse poses (TXT)"
 SPARSE_TXT="$WORK_DIR/sparse_txt"
 mkdir -p "$SPARSE_TXT"
 colmap model_converter --input_path "$MODEL" --output_path "$SPARSE_TXT" --output_type TXT
 
-# --- OpenMVS: densify → mesh → texture, exporting OBJ ----------------------
-# OpenMVS stores image paths relative to its working folder ($MVS) as
-# "images/<name>", but image_undistorter wrote the undistorted images under the
-# dense workspace ($DENSE/images). Without this link DensifyPointCloud fails with
-# "failed reloading image .../mvs/images/*". Point $MVS/images at the real files.
+# --- OpenMVS: densify → mesh, exporting OBJ (no texturing: unused, ~19 min on CPU) ---
+# OpenMVS stores image paths relative to its working folder ($MVS) as "images/<name>";
+# image_undistorter wrote them under $DENSE/images — point $MVS/images at the real files.
 ln -sfn "$DENSE/images" "$MVS/images"
 
 echo "[openmvs] interface"
 InterfaceCOLMAP --working-folder "$MVS" -i "$DENSE" -o "$MVS/scene.mvs"
 
-echo "[openmvs] densify point cloud"
-DensifyPointCloud --working-folder "$MVS" -i "$MVS/scene.mvs" -o "$MVS/scene_dense.mvs"
+echo "[openmvs] densify point cloud (level=$MVS_RES_LEVEL views=$MVS_VIEWS max_res=$MVS_MAX_RES)"
+DensifyPointCloud --working-folder "$MVS" \
+  --resolution-level "$MVS_RES_LEVEL" \
+  --number-views "$MVS_VIEWS" \
+  --max-resolution "$MVS_MAX_RES" \
+  -i "$MVS/scene.mvs" -o "$MVS/scene_dense.mvs"
 
-echo "[openmvs] reconstruct mesh (decimate=${MESH_DECIMATE:-0.3})"
-# Measurement needs geometry, not texture: skip TextureMesh (it took ~19 min of a
-# 60 min CPU run on the first real video and its output is never read) and decimate
-# the mesh — 650k vertices is ~10x what the base slice needs. MESH_DECIMATE=1 keeps
-# every face; tune against the fixtures, never against one video.
+echo "[openmvs] reconstruct mesh (decimate=$DECIMATE)"
 ReconstructMesh --working-folder "$MVS" \
-  --decimate "${MESH_DECIMATE:-0.3}" \
+  --decimate "$DECIMATE" \
   -i "$MVS/scene_dense.mvs" -o "$MVS/scene_mesh.mvs"
 
 echo "[export] PLY → OBJ"

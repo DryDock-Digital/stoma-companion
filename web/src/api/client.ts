@@ -158,7 +158,7 @@ export function getScanApi(): ScanApi {
 // Driver
 // ---------------------------------------------------------------------------
 
-const POLL_INTERVAL_MS = 1500;
+const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_MISSES = 10;
 /** Overall ceiling for one job (FR-11 target is 2 min; 10 min is "something is wrong"). */
 export const POLL_CEILING_MS = 10 * 60 * 1000;
