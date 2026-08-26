@@ -1,0 +1,12 @@
+# Minimal Supabase CLI config for local dev + migration management.
+# `project_id` is the local stack name, not the hosted project ref.
+# Link a hosted project with:  supabase link --project-ref <ref>
+project_id = "stoma-companion"
+
+[db]
+major_version = 15
+
+[storage]
+enabled = true
+# Videos are the large inputs; keep the cap generous for the demo.
+file_size_limit = "512MiB"

@@ -1,0 +1,1 @@
+"""Stoma Companion backend package."""

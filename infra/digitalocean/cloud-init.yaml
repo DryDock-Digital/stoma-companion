@@ -1,0 +1,20 @@
+#cloud-config
+# Base image for the stoma-api droplet: Docker + a deploy user. The GPU worker
+# reuses this and layers NVIDIA drivers (see create-worker-droplet.sh).
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - ufw
+
+runcmd:
+  # Docker engine (official convenience script — fine for a demo host).
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable --now docker
+  # Minimal firewall: SSH + the API port only.
+  - ufw allow OpenSSH
+  - ufw allow 8000/tcp
+  - ufw --force enable

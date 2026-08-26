@@ -1,0 +1,40 @@
+name: CI
+
+# Lint + tests on every push and PR. Keeps the port honest: parity tests against
+# fixtures/ run here once fixtures land (P0-3). For now they run the pure-maths
+# and mocked-store tests, which need no Supabase and no GPU.
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    name: backend · lint + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      # ffmpeg is required by the keyframe extractor's integration tests.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install backend (with dev extras)
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (ruff)
+        run: ruff format --check .
+
+      - name: Tests (pytest)
+        run: pytest -q

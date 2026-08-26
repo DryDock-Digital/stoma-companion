@@ -3,6 +3,42 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D9 — 2026-08-25 · Measurement port (P1-6…P1-8): deterministic core in Python, auto-orientation + mesh-render stay deferred
+The Swift measurement maths are ported to `backend/app/measure/` (slicing, metrics,
+outline, gcode, aruco) as pure deterministic functions with synthetic-geometry
+parity tests; fixture parity joins at P0-3. Scope calls, all faithful to the tickets:
+- **P1-7 slicing** ports only the deterministic slice→perimeter→resample→diameter
+  path. `BasePerimeterExtractor`'s automatic floor/opening-rim/orientation detection
+  is explicitly P2 (P2-2…P2-4) and is *not* ported — the slice plane (up axis / tilt
+  / spin / offset fraction) is a manual input here, per the P1-7 ticket. Base
+  diameter = `feretMajor` ≈ `max_planar_chord_length`.
+- **P1-6 ArUco** uses OpenCV `cv2.aruco` DICT_4X4_50 (the legacy hand-rolled decoder
+  was verified against exactly that). The 3-D scale derivation (marker edge length in
+  scene units → `scale = marker_side_mm / mean_side`, 12% CV gate) is ported and
+  tested in pure numpy. Extracting the marker's 3-D corners *from the reconstructed
+  mesh* (the legacy SceneKit orbit+unproject renderer) is a rendering pipeline tied
+  to reconstruction context — wired at integration (P1-10), not reimplemented now.
+- New backend deps live behind a `measure` extra (numpy, trimesh, opencv-headless)
+  so the API image stays lean; the modules import them lazily.
+
+## D8 — 2026-08-25 · Keyframe extractor defaults to the legacy 0.35 s interval, not the ticket's 0.1 s
+P1-2's text said "default 1/0.1 s per current pipeline," but the legacy source of
+truth (`VideoFrameExporter.swift`) uses `defaultIntervalSeconds = 0.35` (frame cap
+350, clamped 0.03–1.0 s / 100–500 frames). Parity against legacy-generated golden
+fixtures is a hard rule ("no fixture, no merge"), so the Python port defaults to
+**0.35 s** to reproduce the legacy sampling schedule exactly. Interval + frame cap
+stay configurable (env / `KeyframeParams`), so 0.1 s is a one-line change if P2
+keyframe-minimization (P2-5) prefers it. Revisit when tuning quality vs frame count.
+
+## D7 — 2026-08-25 · Infra is committed as code; live provisioning is a deliberate, separate step
+P0-7 lands the Supabase schema (`supabase/migrations`), DigitalOcean droplet scripts
+(`infra/digitalocean`), CI (`.github/workflows/ci.yml`) and `.env.example` as
+infrastructure-as-code. It does **not** create live cloud resources: those spend
+money on Aaron's accounts and need his credentials. The GPU worker droplet stays a
+stub until P1-4/P1-5 (avoid idle GPU spend before COLMAP is proven). CI runs the
+pure-maths + mocked-store tests (no Supabase, no GPU); fixture parity tests join
+once P0-3 lands.
+
 ## D6 — 2026-08-25 · Device connectivity: simulator-first, nothing physical without machine info
 Priority is the measurement pipeline (P1/P2/P5) proving ±1 mm on Cole's videos.
 GRBL work follows, developed against grblHAL sim (or GRBL on a virtual serial

@@ -1,0 +1,11 @@
+-- Lock public.jobs to the backend's service-role key only.
+--
+-- With RLS off, anyone holding the anon key could read/modify every row. The
+-- backend uses the service-role key (which bypasses RLS), and per the architecture
+-- clients never touch Supabase directly — they talk only to the backend API. So
+-- enabling RLS with *no* policies is the correct posture for this phase: the
+-- backend keeps full access, the anon/authenticated roles get nothing.
+--
+-- This is not the deferred HIPAA/PHI work (NFR-07); it just closes the anon-key
+-- hole. Real per-user policies arrive with the compliance phase.
+alter table public.jobs enable row level security;
