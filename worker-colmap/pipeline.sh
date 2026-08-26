@@ -32,6 +32,21 @@ MVS_VIEWS="${MVS_NUMBER_VIEWS:-4}"
 MVS_MAX_RES="${MVS_MAX_RESOLUTION:-1200}"
 DECIMATE="${MESH_DECIMATE:-0.3}"
 
+# COLMAP renamed the GPU/size options between 3.x and 4.x; pick whichever this
+# binary understands so one script serves the apt (3.x) and CUDA (4.x) images.
+if colmap feature_extractor -h 2>&1 | grep -q -- "--FeatureExtraction.use_gpu"; then
+  OPT_EXTRACT_GPU="--FeatureExtraction.use_gpu"
+  OPT_EXTRACT_MAXSIZE="--FeatureExtraction.max_image_size"
+else
+  OPT_EXTRACT_GPU="--SiftExtraction.use_gpu"
+  OPT_EXTRACT_MAXSIZE="--SiftExtraction.max_image_size"
+fi
+if colmap sequential_matcher -h 2>&1 | grep -q -- "--FeatureMatching.use_gpu"; then
+  OPT_MATCH_GPU="--FeatureMatching.use_gpu"
+else
+  OPT_MATCH_GPU="--SiftMatching.use_gpu"
+fi
+
 # Record which GPU (if any) this run had — surfaces on the admin run page.
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 > "$WORK_DIR/gpu.txt" || true
@@ -43,14 +58,14 @@ colmap feature_extractor \
   --database_path "$DB" \
   --image_path "$IMAGE_DIR" \
   --ImageReader.single_camera 1 \
-  --SiftExtraction.use_gpu "$USE_GPU" \
-  --SiftExtraction.max_image_size "$MAX_IMAGE_SIZE" \
+  "$OPT_EXTRACT_GPU" "$USE_GPU" \
+  "$OPT_EXTRACT_MAXSIZE" "$MAX_IMAGE_SIZE" \
   --SiftExtraction.max_num_features "$MAX_FEATURES"
 
 echo "[colmap] sequential matching"
 colmap sequential_matcher \
   --database_path "$DB" \
-  --SiftMatching.use_gpu "$USE_GPU" \
+  "$OPT_MATCH_GPU" "$USE_GPU" \
   --SequentialMatching.overlap "$SEQ_OVERLAP" \
   --SequentialMatching.loop_detection 0
 
