@@ -32,7 +32,7 @@ CLAUDE.md. FR/NFR references are to docs/PRD v0.2.
 
 ## P2 — Auto Base Detection & Cycle Time (parallel with P1)
 
-- [ ] **P2-1 · Verification harness first** — script: given mesh + truth values, compute deviation vs ±1 mm; runs over all fixtures; one-command scoreboard. Every P2 ticket reports its score. (Grows into P5.)
+- [x] **P2-1 · Verification harness first** — script: given mesh + truth values, compute deviation vs ±1 mm; runs over all fixtures; one-command scoreboard. Every P2 ticket reports its score. (Grows into P5.) *(done 2026-08-26 — `backend/app/verify/`; `stoma-score` CLI, pluggable `MeasurementMethod`, per-fixture deviation + margin + CSV. Validated on synthetic cylinders; real fixtures at P0-3.)*
 - [ ] **P2-2 · Orientation via ArUco plane** — prototype: marker plane ≈ peristomal skin plane; its normal defines "up" (FR-04). Score across all fixtures.
 - [ ] **P2-3 · Orientation fallbacks** — RANSAC plane-fit on surrounding skin surface; PCA. Compare against P2-2 on the scoreboard; pick primary + fallback chain.
 - [ ] **P2-4 · Automatic slice height** — profile analysis along the oriented axis (cross-section area stabilization / curvature inflection at the skin junction) (FR-05). Score across all fixtures.

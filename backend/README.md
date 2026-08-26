@@ -24,8 +24,22 @@ app/
     metrics.py     feret/radial/perimeter/area/diameter (P1-7)
     outline.py     Ideal-Fit grace-ring offset, FR-07 (P1-8)
     gcode.py       perimeter G-code + polar path plan (P1-8)
+  verify/        verification harness — scores measured-vs-truth vs ±1 mm (P2-1):
+    fixtures.py    discover/load fixtures (mesh + truth + scale + params)
+    harness.py     pluggable MeasurementMethod → Scoreboard (deviation, margin, CSV)
+    __main__.py    the `stoma-score` CLI
 tests/           pytest; no Supabase, no GPU, ffmpeg only for extractor integration
 ```
+
+## Scoreboard (P2-1)
+
+```bash
+stoma-score                    # score fixtures/ with the baseline method, ±1 mm
+```
+
+Prints per-fixture deviation + pass/fail + aggregates and exits non-zero on any
+miss. Each P2 algorithm ticket adds a `MeasurementMethod` scored on the same board;
+it grows into the P5 test-log module. See `fixtures/README.md` for the input schema.
 
 The `measure/` package needs numpy/trimesh/opencv (the `measure` extra); it's kept
 out of the base install so the API image stays lean, and imported lazily. Its
