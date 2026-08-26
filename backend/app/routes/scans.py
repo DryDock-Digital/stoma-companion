@@ -50,14 +50,22 @@ async def read_and_validate_upload(
 def store_video(store: JobStore, job_id: str, data: bytes, content_type: str, settings: Settings):
     """Fit the video under the storage cap, store it, record sizes. Returns the
     result patch (timings/sizes) for the caller to merge."""
-    t0 = time.perf_counter()
-    fitted = fit_video(data, content_type, max_bytes=settings.storage_object_max_bytes)
-    fit_s = time.perf_counter() - t0
-    video_key = paths.video_key(job_id)
-    t1 = time.perf_counter()
-    store.put_object(video_key, fitted.data, fitted.content_type)
-    store_s = time.perf_counter() - t1
-    store.update_job(job_id, video_path=video_key)
+    try:
+        t0 = time.perf_counter()
+        fitted = fit_video(data, content_type, max_bytes=settings.storage_object_max_bytes)
+        fit_s = time.perf_counter() - t0
+        video_key = paths.video_key(job_id)
+        t1 = time.perf_counter()
+        store.put_object(video_key, fitted.data, fitted.content_type)
+        store_s = time.perf_counter() - t1
+        store.update_job(job_id, video_path=video_key)
+    except Exception:
+        # no ghost rows: a job without a video can never run
+        try:
+            store.delete_job(job_id)
+        except Exception:  # noqa: BLE001
+            pass
+        raise
     patch = {
         "upload_bytes": fitted.original_bytes,
         "stored_bytes": len(fitted.data),

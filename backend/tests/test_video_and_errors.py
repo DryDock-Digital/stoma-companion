@@ -68,6 +68,7 @@ def _client_with_raising_store():
 
 def test_server_error_is_json_with_cors_headers():
     client = _client_with_raising_store()
+    store = client.app.state.store
     r = client.post(
         "/admin/scans",
         files={"video": ("m.mov", b"v", "video/quicktime")},
@@ -77,6 +78,7 @@ def test_server_error_is_json_with_cors_headers():
     assert r.headers.get("access-control-allow-origin") == "*"
     assert r.json()["detail"] == "Something went wrong. Please try again."
     assert "EntityTooLarge" not in r.text and "/internal" not in r.text
+    assert store.list_jobs() == []  # no ghost job left behind
 
 
 def test_too_large_video_is_413_with_message(monkeypatch):
