@@ -61,8 +61,8 @@ and nothing physical is bought or built until machine information arrives.
 
 ## P5 — Verification & Test-Log Module
 
-- [ ] **P5-1 · Run log schema** — per-run record in Supabase: video ref, derived measurement, caliper truth at the FR-10 reference point, deviation, pass/fail, engine + config used (FR-19, FR-20).
-- [ ] **P5-2 · Aggregates + export** — count, mean/max deviation, margin; CSV + formatted PDF export shaped for design-control evidence (FR-21). Cole confirms it slots into his verification docs.
+- [x] **P5-1 · Run log schema** — per-run record in Supabase: video ref, derived measurement, caliper truth at the FR-10 reference point, deviation, pass/fail, engine + config used (FR-19, FR-20). *(done 2026-08-26 — `supabase/migrations/0003_runs.sql` (applied to live, RLS on) + `app/runlog.py` RunRecord + in-memory/Supabase RunStore; live round-trip verified.)*
+- [x] **P5-2 · Aggregates + export** — count, mean/max deviation, margin; CSV + formatted PDF export shaped for design-control evidence (FR-21). Cole confirms it slots into his verification docs. *(done 2026-08-26 — `app/verify/report.py`: summarize + CSV + fpdf2 PDF + scoreboard→runs bridge; `stoma-verification-report` CLI. Cole sign-off pending; real seeding is P5-3/P0-3.)*
 - [ ] **P5-3 · Seed the log** — full fixture set through the finished pipeline; honest dataset committed before the demo.
 
 ## P6 — Integration & Demo Rehearsal

@@ -8,6 +8,8 @@ HIPAA upgrade path so the compliance phase is an upgrade, not a rebuild
 
 - `migrations/0001_jobs.sql` — `public.jobs` table, `claim_next_job()` RPC, and the
   private `scans` storage bucket.
+- `migrations/0002_enable_rls_jobs.sql` — RLS on `jobs` (service-role only).
+- `migrations/0003_runs.sql` — `public.runs` verification run log (P5-1), RLS on.
 - `config.toml` — Supabase CLI config for a local stack.
 
 ## Provisioning a hosted project (needs Aaron's Supabase account)

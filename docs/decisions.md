@@ -3,6 +3,19 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D14 — 2026-08-26 · P5-1/P5-2: verification run log + design-control export
+The P2-1 harness becomes the deliverable. `public.runs` (migration 0003, applied +
+RLS on) logs one row per measured run: measurement vs caliper truth at the FR-10
+reference point, deviation, pass/fail vs ±1 mm, and the engine/config that produced
+it (FR-19/FR-20). Backend `runlog.py` mirrors it (RunRecord + in-memory/Supabase
+RunStore); `verify/report.py` aggregates (count, unique stomas, mean/max deviation,
+margin) and exports **CSV + a formatted PDF** shaped for design-control evidence
+(FR-21) — headline reads "N tests across M unique stomas, all within ±1 mm, average
+margin X mm". `runs_from_scoreboard` bridges the diameter board into run records, so a
+fixture sweep can be logged and reported (this is the P5-3 seeding path). PDF uses
+fpdf2 (core latin-1 font → unicode sanitised). Live round-trip against Supabase
+verified. Seeding with the *real* fixture set is P5-3, blocked on Cole's videos (P0-3).
+
 ## D13 — 2026-08-26 · Patient app: Vite+React+TS+Tailwind, custom dark design system, demo-first
 The web app (`web/`, P3-1…P3-4) is Vite + React + TypeScript + Tailwind with a
 hand-built dark design system (no UI framework) — tokens in `tailwind.config.js` +

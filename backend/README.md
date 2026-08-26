@@ -18,6 +18,7 @@ app/
   pipeline.py    post-upload stage: pending → extracting → keyframes_ready
   queue.py       reconstruction contract + reference poller (P1-3)
   cycle_time.py  StageTimer + CycleReport — per-stage cycle-time budget (P2-6)
+  runlog.py      verification run log — RunRecord + RunStore (P5-1)
   routes/scans.py  POST /scans, GET /scans/{id}
   measure/       ported measurement maths + P2 algorithms:
     aruco.py       ArUco detection + scale derivation (P1-6)
@@ -34,16 +35,18 @@ app/
     synthetic.py   synthetic ArUco scenes + skin point clouds at known poses (P2-2/P2-3)
     orientation.py orientation board: compare aruco/ransac/pca vs known normal
     keyframe_sweep.py  reconstruction-vs-frame-count experiment rig (P2-5)
+    report.py      verification aggregates + CSV/PDF design-control export (P5-2)
 tests/           pytest; no Supabase, no GPU, ffmpeg only for extractor integration
 ```
 
-## Scoreboards & rigs
+## Scoreboards, rigs & reports
 
 ```bash
 stoma-score --method auto-height   # P2-1/P2-4: diameter vs caliper truth, ±1 mm, over fixtures/
 stoma-score-orientation            # P2-2/P2-3: compare aruco/ransac/pca "up" recovery (synthetic)
 stoma-keyframe-sweep --keyframes ./frames --truth 33.0   # P2-5: deviation + runtime vs frame count
 stoma-cycle-budget run-timings.json                       # P2-6: per-stage budget vs the ≤2 min target
+stoma-verification-report --out report                    # P5-2: run log → CSV + design-control PDF
 ```
 
 The last two answer *empirical* questions and produce honest numbers only on real
