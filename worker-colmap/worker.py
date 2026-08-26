@@ -47,8 +47,18 @@ def run_queue() -> None:
     if not settings.supabase_configured:
         sys.exit("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set — see .env.example")
     store = build_store(settings)
+
+    # Measure inline after reconstruction (P1-10) so a job goes straight to `done`.
+    from app.runlog import build_run_store
+
+    from measure_hook import make_measure_hook
+
+    hook = make_measure_hook(build_run_store(settings))
     worker = ReconstructionWorker(
-        store, ColmapReconstructor(), worker_id=os.environ.get("WORKER_ID", "colmap-1")
+        store,
+        ColmapReconstructor(),
+        worker_id=os.environ.get("WORKER_ID", "colmap-1"),
+        measure_hook=hook,
     )
     poll = float(os.environ.get("WORKER_POLL_INTERVAL", "5"))
     worker.run_forever(poll_interval=poll)

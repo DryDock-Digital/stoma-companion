@@ -3,6 +3,21 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D15 — 2026-08-26 · Live deploy: single CPU droplet now, GPU deferred; OpenMVS pinned v2.1.0
+Deployed the whole backend (API + COLMAP/OpenMVS worker + Caddy auto-TLS) onto one
+CPU droplet (159.65.233.200, HTTPS at 159-65-233-200.sslip.io) because the DO
+account's GPU quota is 0 (needs a support request). Consequence: reconstruction runs
+dense stereo on CPU, so the **≤2 min cycle target (FR-11) is not met on this box** —
+acceptable for wiring the pipeline end to end; moving to a GPU droplet later is a
+Dockerfile/host swap (the CUDA `Dockerfile` already exists), not a re-architecture,
+so NFR-02 holds. OpenMVS pinned to **v2.1.0**: master requires OpenCV 4.8 + CGAL 6,
+but Ubuntu 24.04 ships 4.6 + 5.6; v2.1.0 matches the OS libraries. Also fixed a
+COLMAP→OpenMVS image-path bug in `pipeline.sh` (dense images weren't visible to
+DensifyPointCloud under the MVS working folder — would fail on GPU too). CPU SfM
+proven on a 13-image public set (11 calibrated, poses recovered); full mesh proof
+in progress. The prior API droplet (143.244.169.119) vanished from the account
+between sessions — not destroyed by us; consolidating onto one box also cuts cost.
+
 ## D14 — 2026-08-26 · P5-1/P5-2: verification run log + design-control export
 The P2-1 harness becomes the deliverable. `public.runs` (migration 0003, applied +
 RLS on) logs one row per measured run: measurement vs caliper truth at the FR-10

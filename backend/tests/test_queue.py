@@ -101,3 +101,27 @@ def test_run_once_returns_false_when_idle():
     store = InMemoryJobStore()
     worker = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1")
     assert worker.run_once() is False
+
+
+def test_measure_hook_drives_job_to_done(tmp_path):
+    """With a measure hook, the worker measures inline and marks the job done with
+    the merged result + a `measure` timing (P1-10)."""
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+    captured = {}
+
+    def hook(j, mesh_path, keyframe_dir, work_dir):
+        captured["mesh_exists"] = mesh_path.exists()
+        captured["job_id"] = j.id
+        return {"diameter_mm": 33.0, "within_tolerance": True}
+
+    worker = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1", measure_hook=hook)
+    assert worker.run_once() is True
+
+    done = store.get_job(job.id)
+    assert done.status == JobStatus.DONE
+    assert done.mesh_path == paths.mesh_key(job.id)
+    assert done.result["diameter_mm"] == 33.0
+    assert done.result["within_tolerance"] is True
+    assert "measure" in done.result["timings_s"] and "reconstruct" in done.result["timings_s"]
+    assert captured["mesh_exists"] and captured["job_id"] == job.id

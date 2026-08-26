@@ -20,16 +20,20 @@ DENSE="$WORK_DIR/dense"
 MVS="$WORK_DIR/mvs"
 mkdir -p "$SPARSE" "$DENSE" "$MVS"
 
-echo "[colmap] feature extraction"
+# 1 on the GPU image, 0 on the CPU image (COLMAP_USE_GPU set in the Dockerfile).
+USE_GPU="${COLMAP_USE_GPU:-1}"
+
+echo "[colmap] feature extraction (gpu=$USE_GPU)"
 colmap feature_extractor \
   --database_path "$DB" \
   --image_path "$IMAGE_DIR" \
-  --ImageReader.single_camera 1
+  --ImageReader.single_camera 1 \
+  --SiftExtraction.use_gpu "$USE_GPU"
 
 # Frames come from a continuous orbit video → sequential matching is both faster
 # and more robust than exhaustive for ordered input.
-echo "[colmap] sequential matching"
-colmap sequential_matcher --database_path "$DB"
+echo "[colmap] sequential matching (gpu=$USE_GPU)"
+colmap sequential_matcher --database_path "$DB" --SiftMatching.use_gpu "$USE_GPU"
 
 echo "[colmap] sparse mapping"
 colmap mapper \
@@ -51,7 +55,20 @@ colmap image_undistorter \
   --output_path "$DENSE" \
   --output_type COLMAP
 
+# Export camera poses as TXT next to the mesh — the measurement stage (P1-10) uses
+# them to triangulate the ArUco marker for real-world scale + orientation.
+echo "[colmap] export sparse poses (TXT)"
+SPARSE_TXT="$(dirname "$OUTPUT_OBJ")/sparse_txt"
+mkdir -p "$SPARSE_TXT"
+colmap model_converter --input_path "$MODEL" --output_path "$SPARSE_TXT" --output_type TXT
+
 # --- OpenMVS: densify → mesh → texture, exporting OBJ ----------------------
+# OpenMVS stores image paths relative to its working folder ($MVS) as
+# "images/<name>", but image_undistorter wrote the undistorted images under the
+# dense workspace ($DENSE/images). Without this link DensifyPointCloud fails with
+# "failed reloading image .../mvs/images/*". Point $MVS/images at the real files.
+ln -sfn "$DENSE/images" "$MVS/images"
+
 echo "[openmvs] interface"
 InterfaceCOLMAP --working-folder "$MVS" -i "$DENSE" -o "$MVS/scene.mvs"
 

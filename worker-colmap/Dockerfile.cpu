@@ -1,0 +1,60 @@
+# CPU-only reconstruction worker — COLMAP (distro, CPU SIFT) + OpenMVS (CUDA off).
+# Runs on a plain CPU droplet (no GPU quota). COLMAP dense stereo is CUDA-only, so
+# OpenMVS does densification on CPU. OpenMVS find_package's four external libs —
+# nanoflann (apt), and TinyEXIF/TinyNPY/PoseLib (built from source here).
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        colmap \
+        git cmake build-essential \
+        libboost-all-dev \
+        libopencv-dev libcgal-dev libeigen3-dev libnanoflann-dev libtinyxml2-dev \
+        libpng-dev libjpeg-dev libtiff-dev \
+        libglu1-mesa-dev libglew-dev libglfw3-dev freeglut3-dev libglib2.0-0 \
+        libgmp-dev libmpfr-dev zlib1g-dev \
+        python3 python3-dev python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+
+# Ceres (apt) is another OpenMVS find_package dep; TinyEXIF/TinyNPY/PoseLib from source.
+RUN apt-get update && apt-get install -y --no-install-recommends libceres-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && git clone --depth 1 https://github.com/cdcseacave/TinyEXIF.git \
+    && cmake -S TinyEXIF -B TinyEXIF/build -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_DEMO=OFF -DBUILD_SHARED_LIBS=ON \
+    && cmake --build TinyEXIF/build -j2 --target install \
+    && git clone --depth 1 https://github.com/cdcseacave/TinyNPY.git \
+    && cmake -S TinyNPY -B TinyNPY/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON \
+    && cmake --build TinyNPY/build -j2 --target install \
+    && git clone --depth 1 --recursive https://github.com/PoseLib/PoseLib.git \
+    && cmake -S PoseLib -B PoseLib/build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build PoseLib/build -j2 --target install \
+    && ldconfig
+
+# VCGLib (header-only) + OpenMVS. Pinned to v2.1.0: OpenMVS master needs OpenCV 4.8 +
+# CGAL 6, but Ubuntu 24.04 ships 4.6 + 5.6 — v2.1.0 matches the OS libraries and needs
+# only the basic deps. -j2 keeps compile RAM under the 8 GB the small droplet has.
+RUN git clone --depth 1 https://github.com/cdcseacave/VCG.git vcglib \
+    && git clone --depth 1 --branch v2.1.0 https://github.com/cdcseacave/openMVS.git \
+    && mkdir openMVS_build && cd openMVS_build \
+    && cmake ../openMVS -DCMAKE_BUILD_TYPE=Release -DVCG_ROOT=/opt/vcglib -DOpenMVS_USE_CUDA=OFF \
+    && make -j2 && make install && ldconfig
+ENV PATH="/usr/local/bin/OpenMVS:${PATH}"
+
+# Backend package (queue contract + measurement maths) + worker. The worker runs
+# reconstruction *and* the measurement stage (P1-10) inline, so it needs the
+# `measure` extra (numpy/trimesh/opencv). Force CPU in COLMAP.
+WORKDIR /app
+COPY backend/pyproject.toml backend/pyproject.toml
+COPY backend/app backend/app
+RUN pip3 install --no-cache-dir --break-system-packages "./backend[measure]"
+
+COPY worker-colmap/ ./worker
+WORKDIR /app/worker
+ENV PYTHONPATH=/app/backend
+ENV COLMAP_USE_GPU=0
+
+CMD ["python3", "worker.py"]
