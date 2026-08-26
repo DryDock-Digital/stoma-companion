@@ -61,6 +61,8 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/requirements.txt backend/
 COPY backend/app backend/app
 RUN pip3 install --no-cache-dir --break-system-packages -c backend/requirements.txt "./backend[measure]"
+# mesh decimation for the COLMAP dense path (trimesh.simplify_quadric_decimation)
+RUN pip3 install --no-cache-dir --break-system-packages fast-simplification
 
 COPY worker-colmap/ ./worker
 WORKDIR /app/worker

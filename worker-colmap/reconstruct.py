@@ -66,6 +66,11 @@ class ColmapReconstructor:
             k: os.environ.get(k, v)
             for k, v in (
                 ("COLMAP_USE_GPU", "1"),
+                ("DENSE_ENGINE", "auto"),
+                ("PMS_ITERATIONS", "5"),
+                ("PMS_WINDOW_RADIUS", "5"),
+                ("POISSON_DEPTH", "10"),
+                ("POISSON_TRIM", "7"),
                 ("COLMAP_MAX_IMAGE_SIZE", "1600"),
                 ("COLMAP_MAX_FEATURES", "4096"),
                 ("COLMAP_SEQ_OVERLAP", "10"),

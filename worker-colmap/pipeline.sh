@@ -27,6 +27,7 @@ USE_GPU="${COLMAP_USE_GPU:-1}"                 # 1 on the CUDA image, 0 on the C
 MAX_IMAGE_SIZE="${COLMAP_MAX_IMAGE_SIZE:-1600}" # SIFT + undistorted image longest edge
 MAX_FEATURES="${COLMAP_MAX_FEATURES:-4096}"
 SEQ_OVERLAP="${COLMAP_SEQ_OVERLAP:-10}"        # frames come from one continuous orbit
+DENSE_ENGINE="${DENSE_ENGINE:-auto}"           # colmap (CUDA patch-match) | openmvs | auto
 MVS_RES_LEVEL="${MVS_RESOLUTION_LEVEL:-2}"     # 0 = full res, each level halves
 MVS_VIEWS="${MVS_NUMBER_VIEWS:-4}"
 MVS_MAX_RES="${MVS_MAX_RESOLUTION:-1200}"
@@ -96,6 +97,58 @@ echo "[colmap] export sparse poses (TXT)"
 SPARSE_TXT="$WORK_DIR/sparse_txt"
 mkdir -p "$SPARSE_TXT"
 colmap model_converter --input_path "$MODEL" --output_path "$SPARSE_TXT" --output_type TXT
+
+# --- Dense reconstruction ----------------------------------------------------
+# auto: COLMAP's own CUDA patch-match when a GPU is present (OpenMVS in the CUDA image
+# is CPU-only — the COLMAP base has no nvcc), else OpenMVS on CPU.
+if [[ "$DENSE_ENGINE" == "auto" ]]; then
+  if [[ "$USE_GPU" == "1" && -s "$WORK_DIR/gpu.txt" ]]; then DENSE_ENGINE=colmap; else DENSE_ENGINE=openmvs; fi
+fi
+echo "[dense] engine=$DENSE_ENGINE"
+
+if [[ "$DENSE_ENGINE" == "colmap" ]]; then
+  echo "[colmap] patch-match stereo (GPU)"
+  colmap patch_match_stereo \
+    --workspace_path "$DENSE" \
+    --workspace_format COLMAP \
+    --PatchMatchStereo.max_image_size "$MAX_IMAGE_SIZE" \
+    --PatchMatchStereo.geom_consistency true \
+    --PatchMatchStereo.num_iterations "${PMS_ITERATIONS:-5}" \
+    --PatchMatchStereo.window_radius "${PMS_WINDOW_RADIUS:-5}"
+
+  echo "[colmap] stereo fusion"
+  colmap stereo_fusion \
+    --workspace_path "$DENSE" \
+    --workspace_format COLMAP \
+    --input_type geometric \
+    --StereoFusion.max_image_size "$MAX_IMAGE_SIZE" \
+    --output_path "$DENSE/fused.ply"
+
+  echo "[colmap] poisson mesh (depth=${POISSON_DEPTH:-10}, trim=${POISSON_TRIM:-7})"
+  colmap poisson_mesher \
+    --input_path "$DENSE/fused.ply" \
+    --output_path "$DENSE/meshed-poisson.ply" \
+    --PoissonMeshing.depth "${POISSON_DEPTH:-10}" \
+    --PoissonMeshing.trim "${POISSON_TRIM:-7}"
+
+  echo "[export] PLY → OBJ (decimate=$DECIMATE)"
+  python3 - "$DENSE/meshed-poisson.ply" "$OUTPUT_OBJ" "$DECIMATE" <<'PY'
+import sys
+import trimesh
+
+mesh = trimesh.load(sys.argv[1], force="mesh", process=False)
+frac = float(sys.argv[3])
+if 0 < frac < 1 and len(mesh.faces) > 200_000:
+    try:
+        mesh = mesh.simplify_quadric_decimation(face_count=int(len(mesh.faces) * frac))
+    except BaseException as exc:  # optional dependency missing → keep full mesh
+        print(f"[export] decimation skipped: {exc}")
+mesh.export(sys.argv[2], file_type="obj", include_texture=False)
+print(f"[export] {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
+PY
+  echo "[done] mesh → $OUTPUT_OBJ"
+  exit 0
+fi
 
 # --- OpenMVS: densify → mesh, exporting OBJ (no texturing: unused, ~19 min on CPU) ---
 # OpenMVS stores image paths relative to its working folder ($MVS) as "images/<name>";
