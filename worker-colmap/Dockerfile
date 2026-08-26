@@ -50,7 +50,7 @@ ARG CUDA_APT_VERSION=12-9
 ARG CUDA_ARCH=89
 RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-nvcc-${CUDA_APT_VERSION} cuda-cudart-dev-${CUDA_APT_VERSION} \
-        cuda-driver-dev-${CUDA_APT_VERSION} \
+        cuda-driver-dev-${CUDA_APT_VERSION} libcurand-dev-${CUDA_APT_VERSION} \
     && rm -rf /var/lib/apt/lists/*
 ENV PATH="/usr/local/cuda/bin:${PATH}"
 
