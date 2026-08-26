@@ -28,12 +28,32 @@ The script tags the droplet `stoma-api`, installs Docker via `cloud-init.yaml`,
 and prints the public IP. Deploy is then `docker compose up` of `backend/`
 (or a `git pull` + rebuild) — wired up in P1-1's Dockerfile.
 
-## GPU worker
+## GPU worker — bring-up (P1-5)
 
-The reconstruction worker needs a GPU droplet; DO's GPU inventory and pricing
-shift, so sizing is decided at P1-4/P1-5 when the COLMAP harness is up rather than
-baked in here. `create-worker-droplet.sh` is a stub that documents the intended
-shape (GPU droplet, NVIDIA drivers via cloud-init, `worker-colmap/` image).
+DO GPU droplets (H100 / RTX-class, NYC2/TOR1) come with the NVIDIA driver on their
+GPU image. From your machine, with the new box's IP:
+
+```bash
+# 1. host prep: Docker CE + NVIDIA container toolkit + a GPU smoke test (idempotent)
+ssh root@<gpu-ip> 'bash -s' < infra/gpu-host-setup.sh
+
+# 2. build + run the CUDA worker image (first build ~20–40 min: OpenMVS from source)
+WORKER_HOST=<gpu-ip> WORKER_DOCKERFILE=Dockerfile ./infra/deploy-worker.sh
+
+# 3. watch it claim a job; the admin run page shows diagnostics.gpu_name
+ssh root@<gpu-ip> docker logs -f stoma-worker
+```
+
+Put `WORKER_HOST=<gpu-ip>` and `WORKER_ID=colmap-gpu-1` in `.env` so later deploys
+default to it. The worker is **outbound-only** (polls Supabase); it needs no open
+ports and no Caddy. Once it is claiming jobs, stop the CPU worker on the API box
+(`docker stop stoma-worker` on 159.65.233.200) — both poll the same queue, so the
+overlap is harmless. If the base image's CUDA is newer than the host driver
+(`nvidia-smi` shows the max supported CUDA), pin an older `COLMAP_TAG` build arg.
+
+Speed knobs live in `.env` (`COLMAP_MAX_IMAGE_SIZE`, `MVS_RESOLUTION_LEVEL`, …, see
+`.env.example`); every run records the values it used in its diagnostics, and the
+sweep that chose the defaults is in `docs/decisions.md` (D18).
 
 ## Deploying the backend — `infra/deploy.sh`
 
@@ -56,6 +76,6 @@ non-interactively). Overrides: `REMOTE_DIR` (default `/opt/stoma`), `APP_PORT`
 
 ## Status
 
-The API droplet is **live** and running the backend (deployed via `infra/deploy.sh`).
-The GPU worker droplet remains a skeleton — provisioned at P1-4/P1-5, not before, to
-avoid idle spend.
+The API droplet is **live** (backend + Caddy TLS + a CPU fallback worker, D15). The
+GPU worker droplet is provisioned by the client at P1-5; bring-up is the three
+commands above.
