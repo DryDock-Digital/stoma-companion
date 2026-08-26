@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # --- OpenMVS (VCGlib header-only; TinyEXIF external dep built from source) --
 ARG TINYEXIF_REF=1.1.0
 ARG TINYNPY_REF=v1.1
-ARG POSELIB_REF=v2.0.4
+ARG POSELIB_REF=v2.0.5
 ARG VCGLIB_REF=v1.0.1
 ARG OPENMVS_REF=v2.1.0
 WORKDIR /opt
@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libtinyxml2-dev
     && cmake -S TinyNPY -B TinyNPY/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON \
     && cmake --build TinyNPY/build -j"$(nproc)" --target install \
     && git clone --depth 1 --recursive --branch "$POSELIB_REF" https://github.com/PoseLib/PoseLib.git \
-    && cmake -S PoseLib -B PoseLib/build -DCMAKE_BUILD_TYPE=Release \
+    && cmake -S PoseLib -B PoseLib/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error" \
     && cmake --build PoseLib/build -j"$(nproc)" --target install && ldconfig
 # OpenMVS pinned to the same tag as the CPU image (v2.1.0 matches the OpenCV/CGAL
 # that ship with the COLMAP base). The JPEGXL sed is a no-op on v2.1.0 and kept
