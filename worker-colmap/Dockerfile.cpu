@@ -24,7 +24,7 @@ WORKDIR /opt
 ARG TINYEXIF_REF=1.1.0
 ARG TINYNPY_REF=v1.1
 ARG POSELIB_REF=v2.0.5
-ARG VCGLIB_REF=v1.0.1
+ARG VCGLIB_REF=658ba36d0a5666650da6e066b4794efc5a463407  # VCG master commit; tags are too old for OpenMVS 2.1
 ARG OPENMVS_REF=v2.1.0
 
 # Ceres (apt) is another OpenMVS find_package dep; TinyEXIF/TinyNPY/PoseLib from source.
@@ -45,7 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libceres-dev \
 # VCGLib (header-only) + OpenMVS. Pinned to v2.1.0: OpenMVS master needs OpenCV 4.8 +
 # CGAL 6, but Ubuntu 24.04 ships 4.6 + 5.6 — v2.1.0 matches the OS libraries and needs
 # only the basic deps. -j2 keeps compile RAM under the 8 GB the small droplet has.
-RUN git clone --depth 1 --branch "$VCGLIB_REF" https://github.com/cdcseacave/VCG.git vcglib \
+RUN git clone https://github.com/cdcseacave/VCG.git vcglib && git -C vcglib checkout --quiet "$VCGLIB_REF" \
     && git clone --depth 1 --branch "$OPENMVS_REF" https://github.com/cdcseacave/openMVS.git \
     && mkdir openMVS_build && cd openMVS_build \
     && cmake ../openMVS -DCMAKE_BUILD_TYPE=Release -DVCG_ROOT=/opt/vcglib -DOpenMVS_USE_CUDA=OFF \

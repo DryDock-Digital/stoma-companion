@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG TINYEXIF_REF=1.1.0
 ARG TINYNPY_REF=v1.1
 ARG POSELIB_REF=v2.0.5
-ARG VCGLIB_REF=v1.0.1
+ARG VCGLIB_REF=658ba36d0a5666650da6e066b4794efc5a463407  # VCG master commit; tags are too old for OpenMVS 2.1
 ARG OPENMVS_REF=v2.1.0
 WORKDIR /opt
 # OpenMVS find_package deps: Ceres (apt) + TinyEXIF/TinyNPY/PoseLib (from source).
@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libtinyxml2-dev
 # OpenMVS pinned to the same tag as the CPU image (v2.1.0 matches the OpenCV/CGAL
 # that ship with the COLMAP base). The JPEGXL sed is a no-op on v2.1.0 and kept
 # only so a deliberate bump to master still builds.
-RUN git clone --depth 1 --branch "$VCGLIB_REF" https://github.com/cdcseacave/VCG.git vcglib && \
+RUN git clone https://github.com/cdcseacave/VCG.git vcglib && git -C vcglib checkout --quiet "$VCGLIB_REF" && \
     git clone --depth 1 --branch "$OPENMVS_REF" https://github.com/cdcseacave/openMVS.git openMVS && \
     grep -rl IMWRITE_JPEGXL_QUALITY openMVS \
         | xargs -r sed -i 's/IMWRITE_JPEGXL_QUALITY/IMWRITE_JPEG_QUALITY/g' || true && \
