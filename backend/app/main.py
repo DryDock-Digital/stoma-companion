@@ -18,7 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import Settings, get_settings
 from .keyframes import KeyframeParams
 from .pipeline import KeyframeWorker
-from .routes import scans
+from .routes import admin, scans
+from .runlog import RunStore, build_run_store
 from .store import JobStore, build_store
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     keyframe_worker: KeyframeWorker | None = None,
+    run_store: RunStore | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
 
@@ -54,6 +56,7 @@ def create_app(
 
     app.state.settings = settings
     app.state.store = store or build_store(settings)
+    app.state.run_store = run_store or build_run_store(settings)
     app.state.keyframe_worker = (
         keyframe_worker
         if keyframe_worker is not None
@@ -95,6 +98,7 @@ def create_app(
         }
 
     app.include_router(scans.router)
+    app.include_router(admin.router)
     log.info("app ready (store=%s)", type(app.state.store).__name__)
     return app
 

@@ -71,6 +71,8 @@ class RunStore(Protocol):
         self, *, model_name: str | None = None, limit: int | None = None
     ) -> list[RunRecord]: ...
     def delete(self, run_id: str) -> None: ...
+    def find_by_job(self, job_id: str) -> RunRecord | None: ...
+    def update(self, record: RunRecord) -> RunRecord: ...
 
 
 class InMemoryRunStore:
@@ -102,6 +104,21 @@ class InMemoryRunStore:
         with self._lock:
             self._runs.pop(run_id, None)
 
+    def find_by_job(self, job_id: str) -> RunRecord | None:
+        with self._lock:
+            hits = [r for r in self._runs.values() if r.job_id == job_id]
+        if not hits:
+            return None
+        hits.sort(key=lambda r: r.created_at or datetime.now(UTC))
+        return hits[-1].model_copy(deep=True)
+
+    def update(self, record: RunRecord) -> RunRecord:
+        if not record.id:
+            raise ValueError("update needs a record id")
+        with self._lock:
+            self._runs[record.id] = record.model_copy(deep=True)
+            return record.model_copy(deep=True)
+
 
 class SupabaseRunStore:
     def __init__(self, settings: Settings) -> None:
@@ -129,6 +146,24 @@ class SupabaseRunStore:
 
     def delete(self, run_id: str) -> None:
         self._table().delete().eq("id", run_id).execute()
+
+    def find_by_job(self, job_id: str) -> RunRecord | None:
+        res = (
+            self._table()
+            .select("*")
+            .eq("job_id", job_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return RunRecord.model_validate(res.data[0]) if res.data else None
+
+    def update(self, record: RunRecord) -> RunRecord:
+        if not record.id:
+            raise ValueError("update needs a record id")
+        payload = record.model_dump(mode="json", exclude={"id", "created_at"})
+        res = self._table().update(payload).eq("id", record.id).execute()
+        return RunRecord.model_validate(res.data[0]) if res.data else record
 
 
 def build_run_store(settings: Settings) -> RunStore:

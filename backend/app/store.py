@@ -25,6 +25,7 @@ class JobStore(Protocol):
     # --- jobs table ---
     def create_job(self, *, config: dict[str, Any] | None = None) -> Job: ...
     def get_job(self, job_id: str) -> Job | None: ...
+    def list_jobs(self, limit: int = 50) -> list[Job]: ...
     def update_job(self, job_id: str, **fields: Any) -> Job: ...
     def patch_result(self, job_id: str, patch: dict[str, Any]) -> Job: ...
     def claim_next_job(
@@ -89,6 +90,13 @@ class InMemoryJobStore:
         with self._lock:
             job = self._jobs.get(job_id)
             return job.model_copy(deep=True) if job else None
+
+    def list_jobs(self, limit: int = 50) -> list[Job]:
+        with self._lock:
+            jobs = sorted(
+                self._jobs.values(), key=lambda j: (j.created_at or _now(), j.id), reverse=True
+            )
+            return [j.model_copy(deep=True) for j in jobs[:limit]]
 
     def update_job(self, job_id: str, **fields: Any) -> Job:
         with self._lock:
@@ -236,6 +244,10 @@ class SupabaseJobStore:
     def get_job(self, job_id: str) -> Job | None:
         res = self._table().select("*").eq("id", job_id).limit(1).execute()
         return self._row_to_job(res.data[0]) if res.data else None
+
+    def list_jobs(self, limit: int = 50) -> list[Job]:
+        res = self._table().select("*").order("created_at", desc=True).limit(limit).execute()
+        return [self._row_to_job(r) for r in (res.data or [])]
 
     def update_job(self, job_id: str, **fields: Any) -> Job:
         payload = _serialize_fields(fields)
