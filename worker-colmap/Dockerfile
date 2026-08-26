@@ -51,6 +51,11 @@ RUN git clone https://github.com/cdcseacave/VCG.git vcglib && git -C vcglib chec
     ldconfig
 ENV PATH="/usr/local/bin/OpenMVS:${PATH}"
 
+# ffmpeg: the worker extracts keyframes from the video itself (one download instead
+# of ~90 per-frame round trips). Separate layer so the OpenMVS build stays cached.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # --- Python: backend package (queue contract + measurement) + worker -------
 WORKDIR /app
 COPY backend/pyproject.toml backend/requirements.txt backend/
