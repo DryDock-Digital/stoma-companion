@@ -14,8 +14,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .config import Settings, get_settings
+from .errors import DEFAULT_MESSAGES, StageError
 from .keyframes import KeyframeParams
 from .pipeline import KeyframeWorker
 from .routes import admin, scans
@@ -26,6 +28,30 @@ log = logging.getLogger(__name__)
 
 if not logging.getLogger().handlers:  # uvicorn configures its own loggers, not ours
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
+
+class _JSONErrorMiddleware:
+    """Pure-ASGI catch-all: StageError → its status + patient-safe message; anything
+    else → 500 with a plain message. Raw text goes to the log, never the client."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        try:
+            await self.app(scope, receive, send)
+        except StageError as exc:
+            log.warning("request failed in stage %s: %s", exc.stage, exc.detail)
+            status = 413 if exc.stage == "upload" else 500
+            resp = JSONResponse({"detail": exc.user_message, "stage": exc.stage}, status)
+            await resp(scope, receive, send)
+        except Exception:  # noqa: BLE001
+            log.exception("unhandled error on %s %s", scope.get("method"), scope.get("path"))
+            resp = JSONResponse({"detail": DEFAULT_MESSAGES["unknown"]}, 500)
+            await resp(scope, receive, send)
 
 
 def create_app(
@@ -74,6 +100,11 @@ def create_app(
     # The web/Capacitor patient app is a separate origin (P3) and talks only to this
     # API. Origins are configurable; default "*" is fine for the demo phase (no auth,
     # no PHI yet — NFR-07). Tighten to the app origin before anything real.
+    # Errors must come back as JSON *through* the CORS middleware: an unhandled
+    # exception otherwise reaches the browser without CORS headers and every
+    # front end reports a bare "network error" (first admin upload over the storage
+    # cap did exactly that). Added before CORS so it sits inside it.
+    app.add_middleware(_JSONErrorMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,

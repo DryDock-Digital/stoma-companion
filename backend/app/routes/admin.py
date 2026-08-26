@@ -10,7 +10,6 @@ reaches this under /admin and the patient flow never links to it.
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -23,7 +22,7 @@ from ..cycle_time import CycleReport
 from ..models import Job, JobStatus, ScanCreated
 from ..runlog import RunRecord, RunStore
 from ..store import JobStore
-from .scans import _ACCEPTED_PREFIXES, _ACCEPTED_TYPES, get_app_settings, get_store
+from .scans import get_app_settings, get_store, read_and_validate_upload, store_video
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -230,15 +229,7 @@ async def admin_create_scan(
     store: JobStore = Depends(get_store),
     settings: Settings = Depends(get_app_settings),
 ) -> ScanCreated:
-    content_type = video.content_type or ""
-    if not (content_type.startswith(_ACCEPTED_PREFIXES) or content_type in _ACCEPTED_TYPES):
-        raise HTTPException(415, f"Unsupported upload type: {content_type!r}; expected a video.")
-    t0 = time.perf_counter()
-    data = await video.read()
-    if not data:
-        raise HTTPException(400, "Empty upload.")
-    if len(data) > settings.max_upload_bytes:
-        raise HTTPException(413, f"Upload exceeds {settings.max_upload_mb} MB limit.")
+    data, content_type, receive_s = await read_and_validate_upload(video, settings)
 
     config = {
         "keyframe_interval_seconds": settings.keyframe_interval_seconds,
@@ -253,13 +244,9 @@ async def admin_create_scan(
         "source_filename": video.filename,
     }
     job = store.create_job(config=config)
-    video_key = paths.video_key(job.id)
-    store.put_object(video_key, data, content_type or "video/quicktime")
-    store.update_job(job.id, video_path=video_key)
-    store.patch_result(
-        job.id,
-        {"timings_s": {"upload": round(time.perf_counter() - t0, 4)}, "upload_bytes": len(data)},
-    )
+    patch = store_video(store, job.id, data, content_type, settings)
+    patch["timings_s"]["upload"] = round(receive_s, 4)
+    store.patch_result(job.id, patch)
     return ScanCreated(id=job.id, status=JobStatus.PENDING)
 
 

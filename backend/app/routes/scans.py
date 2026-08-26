@@ -14,6 +14,7 @@ from .. import paths
 from ..config import Settings
 from ..models import JobStatus, ScanCreated, ScanStatus
 from ..store import JobStore
+from ..video import fit_video
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -29,16 +30,13 @@ def get_app_settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
-@router.post("", status_code=201, response_model=ScanCreated)
-async def create_scan(
-    video: UploadFile = File(...),
-    store: JobStore = Depends(get_store),
-    settings: Settings = Depends(get_app_settings),
-) -> ScanCreated:
+async def read_and_validate_upload(
+    video: UploadFile, settings: Settings
+) -> tuple[bytes, str, float]:
+    """(bytes, content_type, seconds spent receiving) or an HTTPException."""
     content_type = video.content_type or ""
     if not (content_type.startswith(_ACCEPTED_PREFIXES) or content_type in _ACCEPTED_TYPES):
         raise HTTPException(415, f"Unsupported upload type: {content_type!r}; expected a video.")
-
     t0 = time.perf_counter()
     data = await video.read()
     receive_s = time.perf_counter() - t0
@@ -46,6 +44,39 @@ async def create_scan(
         raise HTTPException(400, "Empty upload.")
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(413, f"Upload exceeds {settings.max_upload_mb} MB limit.")
+    return data, content_type or "video/quicktime", receive_s
+
+
+def store_video(store: JobStore, job_id: str, data: bytes, content_type: str, settings: Settings):
+    """Fit the video under the storage cap, store it, record sizes. Returns the
+    result patch (timings/sizes) for the caller to merge."""
+    t0 = time.perf_counter()
+    fitted = fit_video(data, content_type, max_bytes=settings.storage_object_max_bytes)
+    fit_s = time.perf_counter() - t0
+    video_key = paths.video_key(job_id)
+    t1 = time.perf_counter()
+    store.put_object(video_key, fitted.data, fitted.content_type)
+    store_s = time.perf_counter() - t1
+    store.update_job(job_id, video_path=video_key)
+    patch = {
+        "upload_bytes": fitted.original_bytes,
+        "stored_bytes": len(fitted.data),
+        "video_transcoded": fitted.transcoded,
+        "timings_s": {"store": round(store_s, 4)},
+    }
+    if fitted.transcoded:
+        patch["timings_s"]["transcode"] = round(fit_s, 4)
+        patch["video_crf"] = fitted.crf
+    return patch
+
+
+@router.post("", status_code=201, response_model=ScanCreated)
+async def create_scan(
+    video: UploadFile = File(...),
+    store: JobStore = Depends(get_store),
+    settings: Settings = Depends(get_app_settings),
+) -> ScanCreated:
+    data, content_type, receive_s = await read_and_validate_upload(video, settings)
 
     # Carry every knob used for this run so it stays reproducible (FR-07 ring, marker
     # size, dialect, …) — downstream stages read the job, never the process env.
@@ -56,20 +87,10 @@ async def create_scan(
             **settings.measure_config(),
         }
     )
-
-    video_key = paths.video_key(job.id)
-    t1 = time.perf_counter()
-    store.put_object(video_key, data, content_type or "video/quicktime")
-    store_s = time.perf_counter() - t1
-    store.update_job(job.id, video_path=video_key)
+    patch = store_video(store, job.id, data, content_type, settings)
     # upload time is part of the ≤2 min budget (FR-11): record what the server saw
-    store.patch_result(
-        job.id,
-        {
-            "timings_s": {"upload": round(receive_s + store_s, 4)},
-            "upload_bytes": len(data),
-        },
-    )
+    patch["timings_s"]["upload"] = round(receive_s, 4)
+    store.patch_result(job.id, patch)
     return ScanCreated(id=job.id, status=JobStatus.PENDING)
 
 

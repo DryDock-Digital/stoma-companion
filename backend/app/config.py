@@ -20,6 +20,9 @@ class Settings(BaseSettings):
 
     # --- API ---
     max_upload_mb: int = 512
+    #: per-object cap of the storage backend (Supabase: 50 MB on the current plan).
+    #: Videos over this are re-encoded to fit (app/video.py); meshes are gzip'd.
+    storage_object_max_mb: int = 48
     #: run the keyframe stage worker inside the API process (thread). Off when a
     #: separate `python -m app.keyframe_worker` process handles it.
     run_keyframe_worker: bool = True
@@ -58,6 +61,10 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def storage_object_max_bytes(self) -> int:
+        return self.storage_object_max_mb * 1024 * 1024
 
     @property
     def supabase_configured(self) -> bool:
