@@ -30,6 +30,10 @@ class RunRecord(BaseModel):
     measured_mm: float
     deviation_mm: float | None = None
     abs_deviation_mm: float | None = None
+    #: narrowest caliper span — stomas aren't circles; both readings must pass
+    measured_min_mm: float | None = None
+    truth_min_mm: float | None = None
+    deviation_min_mm: float | None = None
     tolerance_mm: float = 1.0
     passed: bool | None = None
     engine: str | None = None
@@ -51,7 +55,17 @@ class RunRecord(BaseModel):
         measured vs truth so those stay consistent everywhere."""
         deviation = None if truth_mm is None else measured_mm - truth_mm
         abs_dev = None if deviation is None else abs(deviation)
-        passed = None if abs_dev is None else abs_dev <= tolerance_mm
+        measured_min = fields.pop("measured_min_mm", None)
+        truth_min = fields.pop("truth_min_mm", None)
+        dev_min = (
+            None
+            if measured_min is None or truth_min is None
+            else round(float(measured_min) - float(truth_min), 4)
+        )
+        deviation = None if deviation is None else round(deviation, 4)
+        abs_dev = None if abs_dev is None else round(abs_dev, 4)
+        checks = [abs(d) <= tolerance_mm for d in (deviation, dev_min) if d is not None]
+        passed = all(checks) if checks else None
         return cls(
             model_name=model_name,
             measured_mm=measured_mm,
@@ -59,6 +73,9 @@ class RunRecord(BaseModel):
             tolerance_mm=tolerance_mm,
             deviation_mm=deviation,
             abs_deviation_mm=abs_dev,
+            measured_min_mm=measured_min,
+            truth_min_mm=truth_min,
+            deviation_min_mm=dev_min,
             passed=passed,
             **fields,
         )

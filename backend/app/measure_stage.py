@@ -69,6 +69,8 @@ class MeasureStage:
                         model_name=cfg.get("model_name") or job.id,
                         measured_mm=res.diameter_mm,
                         truth_mm=res.truth_mm,
+                        measured_min_mm=(res.shape or {}).get("min_width_mm"),
+                        truth_min_mm=cfg.get("truth_min_mm"),
                         tolerance_mm=res.tolerance_mm,
                         job_id=job.id,
                         video_ref=job.video_path,

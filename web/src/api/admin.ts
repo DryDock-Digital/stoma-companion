@@ -11,10 +11,20 @@ export interface AdminScanSummary {
   updated_at: string;
   status: JobStatus;
   model_name: string | null;
+  /** Caliper truth for the widest span (mm). */
   truth_mm: number | null;
+  /** Caliper truth for the narrowest span (mm). */
+  truth_min_mm: number | null;
   reference_point: string | null;
+  /** Widest caliper span of the base outline (mm). */
   diameter_mm: number | null;
+  /** Narrowest caliper span of the base outline (mm). */
+  min_width_mm: number | null;
+  /** widest − truth_mm */
   deviation_mm: number | null;
+  /** narrowest − truth_min_mm */
+  deviation_min_mm: number | null;
+  /** true only when EVERY provided truth is within ±tolerance_mm; null when no truth. */
   within_tolerance: boolean | null;
   tolerance_mm: number;
   total_s: number | null;
@@ -42,6 +52,48 @@ export interface AdminArtifacts {
 export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 export type JsonObject = Record<string, unknown>;
 
+/** Caliper-style shape summary reported for the base outline (`result.shape`) and the
+ *  wafer outline (`result.wafer_shape`). Angle 0 = the stoma's long axis; a width is the
+ *  caliper span perpendicular to that direction. */
+export interface ShapeSummary {
+  max_width_mm: number;
+  max_width_angle_deg: number;
+  min_width_mm: number;
+  min_width_angle_deg: number;
+  equivalent_diameter_mm: number;
+  perimeter_mm: number;
+  area_mm2: number;
+  principal_axis_deg: number;
+  /** [deg, width_mm] for 0..175 step 5. */
+  widths_by_angle: [number, number][];
+}
+
+/** Defensive parser: the backend contract is being implemented concurrently. */
+export function parseShape(v: unknown): ShapeSummary | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const n = (k: string) => (typeof o[k] === "number" && Number.isFinite(o[k] as number) ? (o[k] as number) : NaN);
+  const widths: [number, number][] = [];
+  if (Array.isArray(o.widths_by_angle)) {
+    for (const p of o.widths_by_angle) {
+      if (Array.isArray(p) && typeof p[0] === "number" && typeof p[1] === "number" && Number.isFinite(p[1])) widths.push([p[0], p[1]]);
+    }
+  }
+  const shape: ShapeSummary = {
+    max_width_mm: n("max_width_mm"),
+    max_width_angle_deg: n("max_width_angle_deg"),
+    min_width_mm: n("min_width_mm"),
+    min_width_angle_deg: n("min_width_angle_deg"),
+    equivalent_diameter_mm: n("equivalent_diameter_mm"),
+    perimeter_mm: n("perimeter_mm"),
+    area_mm2: n("area_mm2"),
+    principal_axis_deg: n("principal_axis_deg"),
+    widths_by_angle: widths,
+  };
+  if (Number.isNaN(shape.max_width_mm) && Number.isNaN(shape.min_width_mm) && widths.length === 0) return null;
+  return shape;
+}
+
 export interface AdminScanDetail extends AdminScanSummary {
   config: JsonObject;
   result: JsonObject | null;
@@ -60,13 +112,17 @@ export interface NewRunInput {
   video: File;
   model_name?: string;
   truth_mm?: number | null;
+  truth_min_mm?: number | null;
   reference_point?: string;
   notes?: string;
 }
 
 export interface PatchRunInput {
   model_name?: string;
+  /** null clears. */
   truth_mm?: number | null;
+  /** null clears. */
+  truth_min_mm?: number | null;
   reference_point?: string;
   notes?: string;
 }
@@ -153,6 +209,7 @@ export function createScan(input: NewRunInput, onProgress?: (fraction: number) =
   form.append("video", input.video, input.video.name || "scan.mp4");
   if (input.model_name) form.append("model_name", input.model_name);
   if (input.truth_mm != null && Number.isFinite(input.truth_mm)) form.append("truth_mm", String(input.truth_mm));
+  if (input.truth_min_mm != null && Number.isFinite(input.truth_min_mm)) form.append("truth_min_mm", String(input.truth_min_mm));
   if (input.reference_point) form.append("reference_point", input.reference_point);
   if (input.notes) form.append("notes", input.notes);
 

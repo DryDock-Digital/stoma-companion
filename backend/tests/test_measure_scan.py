@@ -93,6 +93,10 @@ def test_measure_scan_recovers_diameter_with_ground_truth():
     assert len(rj["outline_mm"]) == 100
     assert len(rj["wafer_outline_mm"]) == 100
     assert "gcode" not in rj  # G-code is an object, never in the poll payload
+    assert rj["shape"]["max_width_mm"] == pytest.approx(33.0, abs=0.3)
+    assert rj["shape"]["min_width_mm"] == pytest.approx(33.0, abs=0.3)  # a cylinder
+    assert rj["wafer_shape"]["max_width_mm"] == pytest.approx(39.0, abs=0.3)
+    assert len(rj["shape"]["widths_by_angle"]) == 36
     assert rj["clearance_mm"]["passes"] is True
 
     # the wafer G-code is the grace ring in mm, in the GRBL dialect

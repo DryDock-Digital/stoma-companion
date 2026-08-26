@@ -28,6 +28,7 @@ import numpy as np
 from ..errors import StageError
 from . import gcode as gcode_mod
 from . import outline as outline_mod
+from . import shape as shape_mod
 from . import slicing
 from .aruco import ARUCO_DICT, detect_markers, quad_area_px, scale_from_marker_corners
 from .orientation import PinholeCamera, recover_marker_plane, refine_up_axis_with_skin
@@ -117,6 +118,8 @@ class MeasureResult:
     gcode_dialect: str = ""
     orientation_method: str = ""
     clearance: dict[str, float] | None = None
+    shape: dict[str, Any] | None = None  # directional widths of the base outline
+    wafer_shape: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def result_json(self) -> dict:
@@ -141,6 +144,8 @@ class MeasureResult:
             "orientation_method": self.orientation_method,
             "gcode_dialect": self.gcode_dialect,
             "clearance_mm": self.clearance,
+            "shape": self.shape,
+            "wafer_shape": self.wafer_shape,
             "diagnostics": _jsonable(self.extra),
         }
 
@@ -335,6 +340,11 @@ def measure_scan(
         wafer_outline, perimeter, clearance_mm=params.grace_ring_mm, dialect=dialect
     )
 
+    base_shape = shape_mod.profile(base_outline)
+    wafer_shape = shape_mod.profile(wafer_outline)
+    if base_shape is not None:
+        diameter_mm = base_shape.max_width_mm  # widest caliper span == longest chord
+
     deviation = None if params.truth_mm is None else diameter_mm - params.truth_mm
     within = None if deviation is None else abs(deviation) <= params.tolerance_mm
 
@@ -353,6 +363,8 @@ def measure_scan(
         gcode=gcode_text,
         gcode_dialect=dialect.name,
         orientation_method=choice.method,
+        shape=None if base_shape is None else base_shape.to_json(),
+        wafer_shape=None if wafer_shape is None else wafer_shape.to_json(),
         clearance={
             "min": round(ideal.clearance.min, 3),
             "mean": round(ideal.clearance.mean, 3),

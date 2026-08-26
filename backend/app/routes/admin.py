@@ -28,7 +28,7 @@ from .scans import _ACCEPTED_PREFIXES, _ACCEPTED_TYPES, get_app_settings, get_st
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 #: config keys the engineer may set/correct on a job
-_TRUTH_KEYS = ("model_name", "truth_mm", "reference_point", "notes")
+_TRUTH_KEYS = ("model_name", "truth_mm", "truth_min_mm", "reference_point", "notes")
 _DEFAULT_REFERENCE_POINT = "base at skin junction"
 
 
@@ -46,9 +46,12 @@ class AdminScanSummary(BaseModel):
     status: JobStatus
     model_name: str | None = None
     truth_mm: float | None = None
+    truth_min_mm: float | None = None
     reference_point: str | None = None
     diameter_mm: float | None = None
+    min_width_mm: float | None = None
     deviation_mm: float | None = None
+    deviation_min_mm: float | None = None
     within_tolerance: bool | None = None
     tolerance_mm: float = 1.0
     total_s: float | None = None
@@ -74,6 +77,7 @@ class AdminScanDetail(AdminScanSummary):
 class TruthPatch(BaseModel):
     model_name: str | None = None
     truth_mm: float | None = None
+    truth_min_mm: float | None = None
     reference_point: str | None = None
     notes: str | None = None
 
@@ -81,22 +85,28 @@ class TruthPatch(BaseModel):
 # --- helpers ---------------------------------------------------------------
 
 
-def _deviation(result: dict[str, Any] | None, truth: float | None, tol: float):
+def _num(v) -> float | None:
+    return None if v in (None, "") else float(v)
+
+
+def _deviations(result: dict[str, Any] | None, cfg: dict[str, Any], tol: float):
+    """(deviation of widest, deviation of narrowest, within) — within is None with no
+    truth, else True only if every provided reading is within ±tol."""
     if not result or result.get("diameter_mm") is None:
-        return None, None
-    if truth is None:
-        return None, None
-    dev = float(result["diameter_mm"]) - float(truth)
-    return round(dev, 3), abs(dev) <= tol
+        return None, None, None
+    truth, truth_min = _num(cfg.get("truth_mm")), _num(cfg.get("truth_min_mm"))
+    min_w = (result.get("shape") or {}).get("min_width_mm")
+    dev = None if truth is None else round(float(result["diameter_mm"]) - truth, 3)
+    dev_min = None if truth_min is None or min_w is None else round(float(min_w) - truth_min, 3)
+    checks = [abs(d) <= tol for d in (dev, dev_min) if d is not None]
+    return dev, dev_min, (all(checks) if checks else None)
 
 
 def _summary(job: Job) -> AdminScanSummary:
     cfg = job.config or {}
     res = job.result or {}
     tol = float(cfg.get("tolerance_mm", res.get("tolerance_mm", 1.0)))
-    truth = cfg.get("truth_mm")
-    truth = None if truth in (None, "") else float(truth)
-    dev, within = _deviation(res, truth, tol)
+    dev, dev_min, within = _deviations(res, cfg, tol)
     timings = res.get("timings_s") or {}
     return AdminScanSummary(
         id=job.id,
@@ -104,10 +114,13 @@ def _summary(job: Job) -> AdminScanSummary:
         updated_at=job.updated_at,
         status=job.status,
         model_name=cfg.get("model_name"),
-        truth_mm=truth,
+        truth_mm=_num(cfg.get("truth_mm")),
+        truth_min_mm=_num(cfg.get("truth_min_mm")),
         reference_point=cfg.get("reference_point"),
         diameter_mm=res.get("diameter_mm"),
+        min_width_mm=(res.get("shape") or {}).get("min_width_mm"),
         deviation_mm=dev,
+        deviation_min_mm=dev_min,
         within_tolerance=within,
         tolerance_mm=tol,
         total_s=round(sum(timings.values()), 2) if timings else None,
@@ -178,13 +191,13 @@ def _sync_run_log(job: Job, run_store: RunStore) -> None:
     if res.get("diameter_mm") is None:
         return
     cfg = job.config or {}
-    truth = cfg.get("truth_mm")
-    truth = None if truth in (None, "") else float(truth)
     existing = run_store.find_by_job(job.id)
     fields = dict(
         model_name=cfg.get("model_name") or job.id,
         measured_mm=float(res["diameter_mm"]),
-        truth_mm=truth,
+        truth_mm=_num(cfg.get("truth_mm")),
+        measured_min_mm=(res.get("shape") or {}).get("min_width_mm"),
+        truth_min_mm=_num(cfg.get("truth_min_mm")),
         tolerance_mm=float(cfg.get("tolerance_mm", res.get("tolerance_mm", 1.0))),
         job_id=job.id,
         video_ref=job.video_path,
@@ -211,6 +224,7 @@ async def admin_create_scan(
     video: UploadFile = File(...),
     model_name: str | None = Form(None),
     truth_mm: float | None = Form(None),
+    truth_min_mm: float | None = Form(None),
     reference_point: str | None = Form(None),
     notes: str | None = Form(None),
     store: JobStore = Depends(get_store),
@@ -232,6 +246,7 @@ async def admin_create_scan(
         **settings.measure_config(),
         "model_name": (model_name or "").strip() or None,
         "truth_mm": truth_mm,
+        "truth_min_mm": truth_min_mm,
         "reference_point": (reference_point or "").strip() or _DEFAULT_REFERENCE_POINT,
         "notes": (notes or "").strip() or None,
         "source": "admin",
@@ -287,10 +302,12 @@ async def admin_patch_scan(
     # recompute deviation/pass on the stored result so the patient API agrees too
     res = dict(job.result or {})
     if res.get("diameter_mm") is not None:
-        truth = cfg.get("truth_mm")
         tol = float(cfg.get("tolerance_mm", res.get("tolerance_mm", 1.0)))
-        dev, within = _deviation(res, None if truth in (None, "") else float(truth), tol)
-        job = store.patch_result(job.id, {"deviation_mm": dev, "within_tolerance": within})
+        dev, dev_min, within = _deviations(res, cfg, tol)
+        job = store.patch_result(
+            job.id,
+            {"deviation_mm": dev, "deviation_min_mm": dev_min, "within_tolerance": within},
+        )
     _sync_run_log(job, run_store)
     return _detail(job, store, run_store)
 

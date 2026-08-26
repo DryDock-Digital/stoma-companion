@@ -35,6 +35,7 @@ def _measured(store, job_id, diameter=33.4):
         job_id,
         {
             "diameter_mm": diameter,
+            "shape": {"max_width_mm": diameter, "min_width_mm": diameter - 4.0},
             "tolerance_mm": 1.0,
             "within_tolerance": None,
             "outline_mm": [[0, 0]],
@@ -137,3 +138,26 @@ def test_admin_404s():
     client, _, _ = _client()
     assert client.get("/admin/scans/nope").status_code == 404
     assert client.patch("/admin/scans/nope", json={"truth_mm": 1}).status_code == 404
+
+
+def test_min_and_max_truths_both_gate_pass():
+    client, store, runs = _client()
+    job_id = client.post(
+        "/admin/scans",
+        files={"video": ("m1.mov", b"v", "video/quicktime")},
+        data={"model_name": "Peanut", "truth_mm": "33.0", "truth_min_mm": "29.0"},
+    ).json()["id"]
+    _measured(store, job_id, 33.4)  # min width = 29.4
+    d = client.get(f"/admin/scans/{job_id}").json()
+    assert d["min_width_mm"] == 29.4
+    assert d["deviation_mm"] == 0.4 and d["deviation_min_mm"] == 0.4
+    assert d["within_tolerance"] is True
+    # widest fine, narrowest 1.6 mm off → overall fail
+    d = client.patch(f"/admin/scans/{job_id}", json={"truth_min_mm": 27.8}).json()
+    assert d["deviation_min_mm"] == 1.6 and d["within_tolerance"] is False
+    assert d["run"]["deviation_min_mm"] == 1.6 and d["run"]["passed"] is False
+    # only the narrowest truth given → judged on that alone
+    d = client.patch(f"/admin/scans/{job_id}", json={"truth_mm": None, "truth_min_mm": 29.2}).json()
+    assert d["deviation_mm"] is None and d["within_tolerance"] is True
+    csv = client.get("/admin/report.csv").text
+    assert "measured_min_mm" in csv and "29.4" in csv
