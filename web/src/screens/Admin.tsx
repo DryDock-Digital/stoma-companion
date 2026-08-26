@@ -10,6 +10,7 @@ import {
   gcodeUrl,
   hasBackend,
   listScans,
+  parseShape,
   patchScan,
   reportCsvUrl,
   type AdminScanDetail,
@@ -17,6 +18,8 @@ import {
   type PatchRunInput,
 } from "../api/admin";
 import { OutlineChart } from "../components/OutlineChart";
+import { WidthChart } from "../components/admin/WidthChart";
+import { PrintOutline } from "./PrintOutline";
 import {
   fmtIso,
   fmtMm,
@@ -36,14 +39,16 @@ import {
 import { isTerminal, type ScanResult } from "../lib/flow";
 
 // ---------------------------------------------------------------------------
-// Hash routing within /admin: #/  #/new  #/run/<id>
+// Hash routing within /admin: #/  #/new  #/run/<id>  #/run/<id>/print
 // ---------------------------------------------------------------------------
 
-type Route = { view: "list" } | { view: "new" } | { view: "run"; id: string };
+type Route = { view: "list" } | { view: "new" } | { view: "run"; id: string } | { view: "print"; id: string };
 
 function parseHash(): Route {
   const h = window.location.hash.replace(/^#\/?/, "");
   if (h === "new") return { view: "new" };
+  const mp = h.match(/^run\/(.+)\/print$/);
+  if (mp) return { view: "print", id: decodeURIComponent(mp[1]) };
   const m = h.match(/^run\/(.+)$/);
   if (m) return { view: "run", id: decodeURIComponent(m[1]) };
   return { view: "list" };
@@ -53,6 +58,7 @@ export const href = {
   list: "#/",
   new: "#/new",
   run: (id: string) => `#/run/${encodeURIComponent(id)}`,
+  print: (id: string) => `#/run/${encodeURIComponent(id)}/print`,
 };
 
 function useRoute(): Route {
@@ -73,7 +79,7 @@ export function Admin() {
   const route = useRoute();
   return (
     <div className="mx-auto min-h-[100dvh] w-full max-w-7xl px-6 py-5">
-      <header className="mb-6 flex items-center justify-between border-b border-line pb-4">
+      <header className="print-hide mb-6 flex items-center justify-between border-b border-line pb-4">
         <div className="flex items-baseline gap-4">
           <a href={href.list} className="text-lg font-semibold tracking-tight">
             Stoma Companion <span className="text-accent">/ test bench</span>
@@ -104,6 +110,8 @@ export function Admin() {
         <RunsList />
       ) : route.view === "new" ? (
         <NewRun />
+      ) : route.view === "print" ? (
+        <PrintOutline id={route.id} backHref={href.run(route.id)} />
       ) : (
         <RunDetail id={route.id} />
       )}
@@ -150,8 +158,12 @@ function RunsList() {
   const agg = useMemo(() => {
     const list = jobs ?? [];
     const measured = list.filter((j) => j.diameter_mm != null);
-    const withTruth = measured.filter((j) => j.truth_mm != null && j.deviation_mm != null);
-    const devs = withTruth.map((j) => Math.abs(j.deviation_mm as number));
+    const withTruth = measured.filter((j) => (j.truth_mm != null && j.deviation_mm != null) || (j.truth_min_mm != null && j.deviation_min_mm != null));
+    const devs: number[] = [];
+    for (const j of withTruth) {
+      if (j.deviation_mm != null) devs.push(Math.abs(j.deviation_mm));
+      if (j.deviation_min_mm != null) devs.push(Math.abs(j.deviation_min_mm));
+    }
     return {
       total: list.length,
       measured: measured.length,
@@ -218,9 +230,12 @@ function RunsList() {
                 <th className="pb-2 pr-3">id</th>
                 <th className="pb-2 pr-3">model</th>
                 <th className="pb-2 pr-3">status</th>
-                <th className="pb-2 pr-3 text-right">Ø measured</th>
+                <th className="pb-2 pr-3 text-right">widest</th>
                 <th className="pb-2 pr-3 text-right">truth</th>
-                <th className="pb-2 pr-3 text-right">deviation</th>
+                <th className="pb-2 pr-3 text-right">dev</th>
+                <th className="pb-2 pr-3 text-right">narrowest</th>
+                <th className="pb-2 pr-3 text-right">truth</th>
+                <th className="pb-2 pr-3 text-right">dev</th>
                 <th className="pb-2 pr-3">result</th>
                 <th className="pb-2 pr-3 text-right">total</th>
                 <th className="pb-2 pr-3">engine</th>
@@ -243,6 +258,9 @@ function RunsList() {
                   <td className="py-2 pr-3 text-right font-mono">{fmtMm(j.diameter_mm)}</td>
                   <td className="py-2 pr-3 text-right font-mono">{fmtMm(j.truth_mm)}</td>
                   <td className={`py-2 pr-3 text-right font-mono ${devTone(j.deviation_mm, j.tolerance_mm)}`}>{fmtSigned(j.deviation_mm)}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{fmtMm(j.min_width_mm)}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{fmtMm(j.truth_min_mm)}</td>
+                  <td className={`py-2 pr-3 text-right font-mono ${devTone(j.deviation_min_mm, j.tolerance_mm)}`}>{fmtSigned(j.deviation_min_mm)}</td>
                   <td className="py-2 pr-3">
                     <PassBadge pass={j.within_tolerance} tolerance={j.tolerance_mm} />
                   </td>
@@ -287,6 +305,7 @@ function NewRun() {
   const [file, setFile] = useState<File | null>(null);
   const [model, setModel] = useState("");
   const [truth, setTruth] = useState("");
+  const [truthMin, setTruthMin] = useState("");
   const [reference, setReference] = useState(DEFAULT_REFERENCE);
   const [notes, setNotes] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
@@ -297,13 +316,14 @@ function NewRun() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) return setError("Pick a video file first.");
-    const truthNum = truth.trim() === "" ? null : Number(truth);
-    if (truthNum !== null && !Number.isFinite(truthNum)) return setError("Caliper truth must be a number (mm).");
+    const truthNum = parseMm(truth);
+    const truthMinNum = parseMm(truthMin);
+    if (truthNum === undefined || truthMinNum === undefined) return setError("Caliper truths must be numbers (mm).");
     setError(null);
     setProgress(0);
     try {
       const created = await createScan(
-        { video: file, model_name: model.trim() || undefined, truth_mm: truthNum, reference_point: reference.trim() || undefined, notes: notes.trim() || undefined },
+        { video: file, model_name: model.trim() || undefined, truth_mm: truthNum, truth_min_mm: truthMinNum, reference_point: reference.trim() || undefined, notes: notes.trim() || undefined },
         setProgress,
       );
       window.location.hash = href.run(created.id);
@@ -335,13 +355,16 @@ function NewRun() {
             <Input value={model} onChange={setModel} placeholder="e.g. phantom-A 30mm" disabled={busy} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Caliper truth (mm, optional)">
+            <Field label="Caliper widest (mm, optional)">
               <Input value={truth} onChange={setTruth} placeholder="30.00" type="number" step="0.01" disabled={busy} />
             </Field>
-            <Field label="Reference point">
-              <Input value={reference} onChange={setReference} disabled={busy} />
+            <Field label="Caliper narrowest (mm, optional)">
+              <Input value={truthMin} onChange={setTruthMin} placeholder="26.00" type="number" step="0.01" disabled={busy} />
             </Field>
           </div>
+          <Field label="Reference point">
+            <Input value={reference} onChange={setReference} disabled={busy} />
+          </Field>
           <Field label="Notes">
             <textarea
               value={notes}
@@ -378,6 +401,13 @@ function NewRun() {
       </Panel>
     </form>
   );
+}
+
+/** "" → null (clear); non-numeric → undefined (invalid). */
+function parseMm(v: string): number | null | undefined {
+  if (v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -498,7 +528,10 @@ function RunDetail({ id }: { id: string }) {
   const outline: ScanResult | null = result
     ? { outline_mm: pointList(result.outline_mm), wafer_outline_mm: pointList(result.wafer_outline_mm) }
     : null;
-  const diameter = job.diameter_mm ?? num(result?.diameter_mm);
+  const shape = parseShape(result?.shape);
+  const waferShape = parseShape(result?.wafer_shape);
+  const diameter = job.diameter_mm ?? shape?.max_width_mm ?? num(result?.diameter_mm);
+  const minWidth = job.min_width_mm ?? shape?.min_width_mm ?? null;
   const a = job.artifacts;
 
   return (
@@ -526,6 +559,11 @@ function RunDetail({ id }: { id: string }) {
           <DlLink href={a.mesh_url} label="mesh (OBJ)" />
           <DlLink href={a.poses_url} label="poses" />
           <DlLink href={a.gcode_url ?? (result ? gcodeUrl(job.id) : null)} label="G-code" />
+          {outline?.outline_mm && (
+            <a href={href.print(job.id)} className="rounded-md border border-accent/50 bg-accent/10 px-2.5 py-1 text-accent hover:bg-accent/20">
+              print 1:1 outline
+            </a>
+          )}
         </div>
       </div>
 
@@ -539,15 +577,47 @@ function RunDetail({ id }: { id: string }) {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* measurement */}
         <Panel title="Measurement">
-          <div className="flex items-baseline gap-2">
-            <span className="font-mono text-5xl">{diameter != null ? diameter.toFixed(2) : "—"}</span>
-            <span className="text-muted">mm Ø</span>
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-4xl">{diameter != null ? diameter.toFixed(2) : "—"}</span>
+              <span className="text-muted">mm widest</span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-4xl">{minWidth != null ? minWidth.toFixed(2) : "—"}</span>
+              <span className="text-muted">mm narrowest</span>
+            </div>
           </div>
           <dl className="mt-4 grid grid-cols-2 gap-y-2 text-sm">
-            <dt className="text-faint">caliper truth</dt>
-            <dd className="text-right font-mono">{fmtMm(job.truth_mm)}</dd>
-            <dt className="text-faint">deviation</dt>
-            <dd className={`text-right font-mono ${devTone(job.deviation_mm, job.tolerance_mm)}`}>{fmtSigned(job.deviation_mm)}</dd>
+            <dt className="text-faint">widest truth / dev</dt>
+            <dd className="text-right font-mono">
+              {fmtMm(job.truth_mm)} <span className={devTone(job.deviation_mm, job.tolerance_mm)}>{fmtSigned(job.deviation_mm)}</span>
+            </dd>
+            <dt className="text-faint">narrowest truth / dev</dt>
+            <dd className="text-right font-mono">
+              {fmtMm(job.truth_min_mm)} <span className={devTone(job.deviation_min_mm, job.tolerance_mm)}>{fmtSigned(job.deviation_min_mm)}</span>
+            </dd>
+            {shape && (
+              <>
+                <dt className="text-faint">widest @ angle</dt>
+                <dd className="text-right font-mono text-xs">{Number.isFinite(shape.max_width_angle_deg) ? `${shape.max_width_angle_deg.toFixed(0)}°` : "—"}</dd>
+                <dt className="text-faint">narrowest @ angle</dt>
+                <dd className="text-right font-mono text-xs">{Number.isFinite(shape.min_width_angle_deg) ? `${shape.min_width_angle_deg.toFixed(0)}°` : "—"}</dd>
+                <dt className="text-faint">equivalent Ø</dt>
+                <dd className="text-right font-mono">{fmtMm(shape.equivalent_diameter_mm)}</dd>
+                <dt className="text-faint">perimeter</dt>
+                <dd className="text-right font-mono">{fmtMm(shape.perimeter_mm)}</dd>
+                <dt className="text-faint">area</dt>
+                <dd className="text-right font-mono">{Number.isFinite(shape.area_mm2) ? `${shape.area_mm2.toFixed(1)} mm²` : "—"}</dd>
+              </>
+            )}
+            {waferShape && (
+              <>
+                <dt className="text-faint">wafer widest / narrowest</dt>
+                <dd className="text-right font-mono">
+                  {fmtMm(waferShape.max_width_mm)} / {fmtMm(waferShape.min_width_mm)}
+                </dd>
+              </>
+            )}
             <dt className="text-faint">tolerance</dt>
             <dd className="text-right font-mono">±{job.tolerance_mm} mm</dd>
             <dt className="text-faint">result</dt>
@@ -612,6 +682,10 @@ function RunDetail({ id }: { id: string }) {
         </Panel>
       </div>
 
+      <Panel title="Width by direction (caliper span vs angle from long axis)">
+        <WidthChart base={shape} wafer={waferShape} truthMax={job.truth_mm} truthMin={job.truth_min_mm} tolerance={job.tolerance_mm} />
+      </Panel>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Panel title="Diagnostics">
           <KVTable data={omit(diagnostics, ["diameter_profile"])} />
@@ -675,9 +749,56 @@ function DlLink({ href: url, label }: { href: string | null; label: string }) {
   );
 }
 
+function ReadingRow({ label, measured, truth, dev, tol }: { label: string; measured: number | null; truth: number | null; dev: number | null; tol: number }) {
+  const pass = dev == null ? null : Math.abs(dev) <= tol;
+  return (
+    <tr className="border-t border-line">
+      <td className="py-1 text-xs text-faint">{label}</td>
+      <td className="py-1 text-right font-mono text-xs">{fmtMm(measured)}</td>
+      <td className="py-1 text-right font-mono text-xs">{fmtMm(truth)}</td>
+      <td className={`py-1 text-right font-mono text-xs ${devTone(dev, tol)}`}>{fmtSigned(dev)}</td>
+      <td className="py-1 pl-2 text-right">
+        <PassBadge pass={pass} />
+      </td>
+    </tr>
+  );
+}
+
+/** Per-reading deviation (saved values from the server) and the overall verdict. */
+function ReadingRows({ job }: { job: AdminScanDetail }) {
+  return (
+    <table className="w-full text-sm">
+      <thead className="text-left text-[10px] uppercase tracking-wider text-faint">
+        <tr>
+          <th className="pb-1">reading</th>
+          <th className="pb-1 text-right">measured</th>
+          <th className="pb-1 text-right">truth</th>
+          <th className="pb-1 text-right">dev</th>
+          <th className="pb-1" />
+        </tr>
+      </thead>
+      <tbody>
+        <ReadingRow label="widest" measured={job.diameter_mm} truth={job.truth_mm} dev={job.deviation_mm} tol={job.tolerance_mm} />
+        <ReadingRow label="narrowest" measured={job.min_width_mm} truth={job.truth_min_mm} dev={job.deviation_min_mm} tol={job.tolerance_mm} />
+      </tbody>
+      <tfoot>
+        <tr className="border-t border-line-strong">
+          <td className="py-1.5 text-xs font-semibold" colSpan={4}>
+            overall (every provided truth within ±{job.tolerance_mm} mm)
+          </td>
+          <td className="py-1.5 pl-2 text-right">
+            <PassBadge pass={job.within_tolerance} tolerance={job.tolerance_mm} />
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  );
+}
+
 function CaliperForm({ job, onSaved }: { job: AdminScanDetail; onSaved: (d: AdminScanDetail) => void }) {
   const [model, setModel] = useState(job.model_name ?? "");
   const [truth, setTruth] = useState(job.truth_mm != null ? String(job.truth_mm) : "");
+  const [truthMin, setTruthMin] = useState(job.truth_min_mm != null ? String(job.truth_min_mm) : "");
   const [reference, setReference] = useState(job.reference_point ?? DEFAULT_REFERENCE);
   const [notes, setNotes] = useState(job.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -687,6 +808,7 @@ function CaliperForm({ job, onSaved }: { job: AdminScanDetail; onSaved: (d: Admi
   useEffect(() => {
     setModel(job.model_name ?? "");
     setTruth(job.truth_mm != null ? String(job.truth_mm) : "");
+    setTruthMin(job.truth_min_mm != null ? String(job.truth_min_mm) : "");
     setReference(job.reference_point ?? DEFAULT_REFERENCE);
     setNotes(job.notes ?? "");
     setMsg(null);
@@ -694,15 +816,16 @@ function CaliperForm({ job, onSaved }: { job: AdminScanDetail; onSaved: (d: Admi
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const truthNum = truth.trim() === "" ? null : Number(truth);
-    if (truthNum !== null && !Number.isFinite(truthNum)) return setMsg({ tone: "error", text: "Truth must be a number (mm)." });
-    const patch: PatchRunInput = { model_name: model.trim(), truth_mm: truthNum, reference_point: reference.trim(), notes: notes.trim() };
+    const truthNum = parseMm(truth);
+    const truthMinNum = parseMm(truthMin);
+    if (truthNum === undefined || truthMinNum === undefined) return setMsg({ tone: "error", text: "Truths must be numbers (mm)." });
+    const patch: PatchRunInput = { model_name: model.trim(), truth_mm: truthNum, truth_min_mm: truthMinNum, reference_point: reference.trim(), notes: notes.trim() };
     setSaving(true);
     setMsg(null);
     try {
       const updated = await patchScan(job.id, patch);
       onSaved(updated);
-      setMsg({ tone: "info", text: `Saved · deviation ${fmtSigned(updated.deviation_mm)}` });
+      setMsg({ tone: "info", text: `Saved · widest ${fmtSigned(updated.deviation_mm)} · narrowest ${fmtSigned(updated.deviation_min_mm)}` });
     } catch (err) {
       setMsg({ tone: "error", text: describeError(err) });
     } finally {
@@ -717,13 +840,17 @@ function CaliperForm({ job, onSaved }: { job: AdminScanDetail; onSaved: (d: Admi
           <Input value={model} onChange={setModel} disabled={saving} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Truth (mm)">
+          <Field label="Widest (mm)">
             <Input value={truth} onChange={setTruth} type="number" step="0.01" placeholder="blank = none" disabled={saving} />
           </Field>
-          <Field label="Reference point">
-            <Input value={reference} onChange={setReference} disabled={saving} />
+          <Field label="Narrowest (mm)">
+            <Input value={truthMin} onChange={setTruthMin} type="number" step="0.01" placeholder="blank = none" disabled={saving} />
           </Field>
         </div>
+        <Field label="Reference point">
+          <Input value={reference} onChange={setReference} disabled={saving} />
+        </Field>
+        <ReadingRows job={job} />
         <Field label="Notes">
           <textarea
             value={notes}
