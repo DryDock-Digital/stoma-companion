@@ -130,7 +130,10 @@ def test_worker_processes_job_to_mesh_ready_with_poses():
     assert done.status == JobStatus.MESH_READY
     assert done.mesh_path == paths.mesh_key(job.id)
     assert done.poses_path == paths.poses_key(job.id)
-    assert store.get_object(done.mesh_path).startswith(b"o stoma")
+    import gzip
+
+    assert done.mesh_path.endswith(".obj.gz")
+    assert gzip.decompress(store.get_object(done.mesh_path)).startswith(b"o stoma")
     cams = poses_mod.loads(store.get_object(done.poses_path))
     assert len(cams) == 8 and isinstance(next(iter(cams.values())), PinholeCamera)
     timings = done.result["timings_s"]
@@ -228,7 +231,9 @@ def test_combined_worker_runs_both_stages():
         mesh_path=paths.mesh_key(orphan.id),
         poses_path=paths.poses_key(orphan.id),
     )
-    store.put_object(paths.mesh_key(orphan.id), b"o x\n", "model/obj")
+    import gzip
+
+    store.put_object(paths.mesh_key(orphan.id), gzip.compress(b"o x\n"), "application/gzip")
     store.put_object(
         paths.poses_key(orphan.id), poses_mod.dumps({"a": _cam()}).encode(), "application/json"
     )

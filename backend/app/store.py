@@ -219,6 +219,8 @@ class SupabaseJobStore:
         from supabase import create_client  # imported here to keep it optional
 
         self._bucket = settings.supabase_storage_bucket
+        self._url = settings.supabase_url
+        self._key = settings.supabase_service_role_key
         self._client = create_client(settings.supabase_url, settings.supabase_service_role_key)
 
     def _table(self):
@@ -283,11 +285,33 @@ class SupabaseJobStore:
             "oldest_claim_age_s": row.get("oldest_claim_age_s"),
         }
 
+    #: above this size, bypass supabase-py's HTTP/2 client (CPU-bound at ~40 KB/s on
+    #: the first real 162 MB mesh) and stream the body over plain HTTP/1.1.
+    LARGE_OBJECT_BYTES = 8 * 1024 * 1024
+
     def put_object(self, path: str, data: bytes, content_type: str) -> str:
+        if len(data) >= self.LARGE_OBJECT_BYTES:
+            self._put_large(path, data, content_type)
+            return path
         self._client.storage.from_(self._bucket).upload(
             path, data, {"content-type": content_type, "upsert": "true"}
         )
         return path
+
+    def _put_large(self, path: str, data: bytes, content_type: str) -> None:
+        import httpx
+
+        url = f"{self._url.rstrip('/')}/storage/v1/object/{self._bucket}/{path}"
+        headers = {
+            "Authorization": f"Bearer {self._key}",
+            "apikey": self._key,
+            "Content-Type": content_type,
+            "x-upsert": "true",
+        }
+        with httpx.Client(http2=False, timeout=httpx.Timeout(600.0, connect=30.0)) as client:
+            res = client.post(url, content=data, headers=headers)
+            if res.status_code >= 400:
+                raise RuntimeError(f"storage upload failed {res.status_code}: {res.text[:300]}")
 
     def get_object(self, path: str) -> bytes:
         return self._client.storage.from_(self._bucket).download(path)

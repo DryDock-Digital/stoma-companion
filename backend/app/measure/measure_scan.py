@@ -31,7 +31,12 @@ from . import outline as outline_mod
 from . import slicing
 from .aruco import ARUCO_DICT, detect_markers, quad_area_px, scale_from_marker_corners
 from .orientation import PinholeCamera, recover_marker_plane, refine_up_axis_with_skin
-from .slice_height import SliceHeightParams, auto_slice_height
+from .slice_height import (
+    SliceHeightParams,
+    base_height_from_profile,
+    polar_diameter_profile,
+    stoma_axis,
+)
 
 
 class MeasureError(StageError):
@@ -59,6 +64,10 @@ class MeasureParams:
     roi_radius_mm: float = 120.0
     roi_below_mm: float = 10.0
     roi_above_mm: float = 60.0
+    #: height above the skin plane used to locate the stoma axis (mid-stoma)
+    axis_probe_mm: float = 10.0
+    #: loops shorter than this are noise, never the stoma section (mm)
+    min_section_perimeter_mm: float = 30.0
     # peristomal-skin band used for the RANSAC "up" refinement (mm from marker plane)
     skin_band_mm: float = 4.0
     skin_ransac_threshold_mm: float = 1.5
@@ -247,16 +256,70 @@ def measure_scan(
     max_h = float(heights.max())
     if max_h - floor_h < 1.0:
         raise MeasureError("nothing rises above the skin plane inside the region of interest")
+    probe = min(floor_h + params.axis_probe_mm, floor_h + 0.6 * (max_h - floor_h))
+    found = stoma_axis(roi_v, roi_f, normal, floor_h=floor_h, max_h=max_h, probe_h=probe)
+    if found is None:
+        raise MeasureError("no stoma section found above the skin plane")
+    axis, r_ref = found
+    prof_h, prof_d = polar_diameter_profile(
+        roi_v,
+        roi_f,
+        normal,
+        floor_h=floor_h,
+        max_h=max_h,
+        axis=axis,
+        r_ref=r_ref,
+        params=params.slice,
+    )
+    rel_h = base_height_from_profile(prof_h, prof_d, params.slice)
+    if rel_h is None:
+        raise MeasureError("no stoma section at any height above the skin plane")
+    plane_h = floor_h + rel_h
+
+    # 6. base outline at that height: the traced loop around the stoma axis when
+    # the mesh topology allows it, else the polar outline (holes / T-junctions).
+    # The traced loop must agree with the polar Ø within 10% or it's a merged loop.
+    polar_d = float(np.interp(rel_h, prof_h, np.nan_to_num(prof_d, nan=0.0)))
+    outline_method = "loop"
     try:
-        plane_h = auto_slice_height(
-            roi_v, roi_f, normal, floor_h=floor_h, max_h=max_h, params=params.slice
-        )
-        # 6. slice → base loop → exact diameter
         perimeter = slicing.extract_perimeter(
-            roi_v, roi_f, normal, 0.0, floor_h=floor_h, max_h=max_h, plane_h=plane_h
+            roi_v,
+            roi_f,
+            normal,
+            0.0,
+            floor_h=floor_h,
+            max_h=max_h,
+            plane_h=plane_h,
+            containing=axis,
+            min_perimeter=params.min_section_perimeter_mm,
         )
-    except slicing.LoopError as exc:
-        raise MeasureError(str(exc)) from exc
+        if polar_d > 0 and abs(perimeter.diameter() - polar_d) > 0.10 * polar_d:
+            raise slicing.LoopError("traced loop disagrees with the polar profile")
+    except slicing.LoopError:
+        outline_method = "polar"
+        segs = slicing.extract_perimeter(
+            roi_v,
+            roi_f,
+            normal,
+            0.0,
+            floor_h=floor_h,
+            max_h=max_h,
+            plane_h=plane_h,
+            return_segments=True,
+        )
+        outline = slicing.polar_section_outline(segs, axis, r_ref)
+        if outline is None:
+            raise MeasureError("no stoma section at the base height") from None
+        au, av = slicing.slice_basis(normal)
+        perimeter = slicing.perimeter_from_outline(
+            outline,
+            normal=normal,
+            plane_d=plane_h,
+            axis_u=au,
+            axis_v=av,
+            floor_h=floor_h,
+            max_h=max_h,
+        )
     diameter_mm = perimeter.diameter()
 
     # 7. FR-07 wafer outline + G-code
@@ -305,6 +368,14 @@ def measure_scan(
             "skin_angle_to_marker_deg": choice.angle_to_marker_deg,
             "skin_inlier_fraction": choice.skin_inlier_fraction,
             "slice_height_mm_above_skin": plane_h - floor_h,
+            "stoma_axis_uv": [float(axis[0]), float(axis[1])],
+            "stoma_probe_radius_mm": r_ref,
+            "outline_method": outline_method,
+            "polar_diameter_at_base_mm": polar_d,
+            "diameter_profile": [
+                [round(float(h), 2), None if not np.isfinite(dd) else round(float(dd), 2)]
+                for h, dd in zip(prof_h, prof_d, strict=True)
+            ],
             "roi_vertices": int(len(roi_v)),
             "loop_vertices": perimeter.loop_vertex_count,
         },

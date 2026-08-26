@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from ..measure.aruco import ARUCO_DICT, detect_markers
+from ..measure.aruco import ARUCO_DICT, aruco_dictionary, detect_markers
 from ..measure.orientation import PinholeCamera
 
 MARKER_PX = 240  # canonical marker render size
@@ -173,8 +173,7 @@ def build_scene(
     center = np.asarray(center, dtype=float)
     u, v = plane_basis(normal)
     skin_points = skin_point_cloud(normal, center, **(skin_kwargs or {})) if with_skin else None
-    dictionary = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, ARUCO_DICT))
-    marker_img = cv2.aruco.generateImageMarker(dictionary, marker_id, MARKER_PX)
+    marker_img = cv2.aruco.generateImageMarker(aruco_dictionary(ARUCO_DICT), marker_id, MARKER_PX)
     cameras = orbit_cameras(
         center,
         u,

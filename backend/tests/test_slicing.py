@@ -63,3 +63,37 @@ def test_arc_length_resample_is_evenly_spaced():
     pts = np.array([[s.x, s.y] for s in samples])
     steps = np.linalg.norm(np.diff(pts, axis=0), axis=1)
     assert steps.std() < 0.01  # near-uniform spacing
+
+
+def test_section_with_a_hole_is_closed_across_a_small_gap():
+    """Real meshes have holes near the skin junction: a cylinder with a wedge of wall
+    faces removed still yields its 33 mm base (gap closed), but a long open arc
+    (a skin sheet cut by the crop) is never promoted to a loop."""
+    import math
+
+    trimesh = pytest.importorskip("trimesh")
+
+    cyl = trimesh.creation.cylinder(radius=16.5, height=20.0, sections=96)
+    v = np.asarray(cyl.vertices, float)
+    f = np.asarray(cyl.faces, int)
+    # remove wall faces in a 20° wedge (~9% of the perimeter)
+    ang = np.degrees(np.arctan2(v[f][:, :, 1].mean(1), v[f][:, :, 0].mean(1)))
+    wall = np.abs(v[f][:, :, 2].std(1)) > 1e-9
+    keep = ~(wall & (np.abs(ang) < 10))
+    res = slicing.extract_perimeter(v, f[keep], [0, 0, 1.0], 0.5)
+    assert res.diameter() == pytest.approx(33.0, abs=0.3)
+
+    # an open half-cylinder arc: gap (33 mm) ≈ 64% of arc length → not a loop
+    half = ~(wall & (v[f][:, :, 0].mean(1) < 0))
+    with pytest.raises(slicing.LoopError):
+        slicing.extract_perimeter(
+            v,
+            f[half & ~wall | (wall & (v[f][:, :, 0].mean(1) >= 0))][:0]
+            if False
+            else f[(v[f][:, :, 0].mean(1) >= 0) | ~wall][
+                (v[f[(v[f][:, :, 0].mean(1) >= 0) | ~wall]][:, :, 2].std(1) > 1e-9)
+            ],
+            [0, 0, 1.0],
+            0.5,
+        )
+    del math

@@ -194,3 +194,18 @@ def test_skin_refinement_keeps_marker_when_skin_disagrees():
         abs(np.degrees(np.arccos(abs(choice.normal @ np.array([np.sin(tilt), 0, np.cos(tilt)])))))
         < 0.5
     )
+
+
+def test_plane_fit_on_large_point_cloud_is_thin_svd():
+    """A 300k-point skin patch must not allocate an N×N matrix (it OOM-killed the
+    first real measurement)."""
+    from app.measure.orientation import fit_plane_normal, refine_up_axis_with_skin
+
+    rng = np.random.default_rng(0)
+    pts = np.column_stack(
+        [rng.uniform(-50, 50, 300_000), rng.uniform(-50, 50, 300_000), rng.normal(0, 0.1, 300_000)]
+    )
+    n, _, _ = fit_plane_normal(pts)
+    assert abs(abs(n[2]) - 1) < 1e-3
+    ch = refine_up_axis_with_skin([0, 0, 1.0], [0, 0, 0], pts, orient_toward=[0, 0, 100.0])
+    assert ch.method == "aruco+ransac"

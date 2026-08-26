@@ -41,16 +41,105 @@ class SliceHeightParams:
 DEFAULT_PARAMS = SliceHeightParams()
 
 
-def _section_area(vertices, faces, normal, *, plane_h, floor_h, max_h) -> float:
+def _section(
+    vertices, faces, normal, *, plane_h, floor_h, max_h, containing=None, min_perimeter=0.0
+):
     try:
-        result = slicing.extract_perimeter(
-            vertices, faces, normal, 0.0, floor_h=floor_h, max_h=max_h, plane_h=plane_h
+        return slicing.extract_perimeter(
+            vertices,
+            faces,
+            normal,
+            0.0,
+            floor_h=floor_h,
+            max_h=max_h,
+            plane_h=plane_h,
+            containing=containing,
+            min_perimeter=min_perimeter,
         )
     except slicing.LoopError:
+        return None
+
+
+def _section_area(vertices, faces, normal, *, plane_h, floor_h, max_h, **kw) -> float:
+    result = _section(vertices, faces, normal, plane_h=plane_h, floor_h=floor_h, max_h=max_h, **kw)
+    if result is None:
         return 0.0
     pts = result.loop_xy if result.loop_xy is not None else np.array(result.plane_xy())
     x, y = pts[:, 0], pts[:, 1]
     return 0.5 * abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
+
+
+def _segments(vertices, faces, normal, *, floor_h, max_h, plane_h):
+    try:
+        return slicing.extract_perimeter(
+            vertices,
+            faces,
+            normal,
+            0.0,
+            floor_h=floor_h,
+            max_h=max_h,
+            plane_h=plane_h,
+            return_segments=True,
+        )
+    except slicing.LoopError:
+        return []
+
+
+def stoma_axis(vertices, faces, normal, *, floor_h, max_h, probe_h: float, cell: float = 2.0):
+    """((u, v) of the stoma axis in slice coordinates, reference radius): centroid
+    and median radius of the largest cluster of section points at `probe_h`
+    (absolute height). None if nothing is cut."""
+    segs = _segments(vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=probe_h)
+    if not segs:
+        return None
+    pts = np.array([p for s in segs for p in s])
+    cl = slicing.largest_point_cluster(pts, cell)
+    if len(cl) < 10:
+        return None
+    axis = cl.mean(axis=0)
+    r_ref = float(np.median(np.hypot(*(cl - axis).T)))
+    return axis, r_ref
+
+
+def polar_diameter_profile(
+    vertices, faces, normal, *, floor_h, max_h, axis, r_ref, params=DEFAULT_PARAMS
+):
+    """(heights_above_floor, Ø or nan): the topology-free stoma profile."""
+    span = max(max_h - floor_h, 1e-6)
+    heights = np.linspace(
+        floor_h + params.end_trim_frac * span, max_h - params.end_trim_frac * span, params.n_levels
+    )
+    out = []
+    for h in heights:
+        segs = _segments(vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=h)
+        o = slicing.polar_section_outline(segs, axis, r_ref) if segs else None
+        out.append(float("nan") if o is None else slicing.max_planar_chord_length(o))
+    return heights - floor_h, np.array(out)
+
+
+def diameter_profile(
+    vertices, faces, normal, *, floor_h, max_h, containing, min_perimeter, params=DEFAULT_PARAMS
+):
+    """(heights_above_floor, diameter_mm or nan) at n_levels — the hole-immune stoma
+    profile used for the junction rule and reported in diagnostics."""
+    span = max(max_h - floor_h, 1e-6)
+    heights = np.linspace(
+        floor_h + params.end_trim_frac * span, max_h - params.end_trim_frac * span, params.n_levels
+    )
+    out = []
+    for h in heights:
+        r = _section(
+            vertices,
+            faces,
+            normal,
+            plane_h=h,
+            floor_h=floor_h,
+            max_h=max_h,
+            containing=containing,
+            min_perimeter=min_perimeter,
+        )
+        out.append(float("nan") if r is None else r.diameter())
+    return heights - floor_h, np.array(out)
 
 
 def area_profile_heights(
@@ -92,6 +181,21 @@ def _junction_height(heights: np.ndarray, areas: np.ndarray, drop_frac: float) -
     if steps[j] > drop_frac * areas.max():
         return float(heights[j + 1])
     return None
+
+
+def base_height_from_profile(heights, diameters, params: SliceHeightParams = DEFAULT_PARAMS):
+    """Base slice height from the Ø-vs-height profile: the skin→stoma junction is
+    the largest downward step in Ø going up from the floor (skin/mat flare → stoma);
+    slice `margin_mm` above it. With no step, the lowest valid level + margin."""
+    valid = np.isfinite(diameters)
+    if not valid.any():
+        return None
+    h, d = heights[valid], diameters[valid]
+    steps = d[:-1] - d[1:]
+    j = int(np.argmax(steps)) if len(steps) else 0
+    if len(steps) and steps[j] > params.junction_drop_frac * np.nanmax(d):
+        return float(h[j + 1] + params.margin_mm)
+    return float(h[0] + params.margin_mm)
 
 
 def auto_slice_height(

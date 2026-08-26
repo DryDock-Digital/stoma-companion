@@ -243,7 +243,8 @@ def fit_plane_normal(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]
     RMS out-of-plane distance)."""
     pts = np.asarray(points, dtype=float)
     centroid = pts.mean(axis=0)
-    _, _, vt = np.linalg.svd(pts - centroid)
+    # thin SVD: the full one allocates an N×N U (a 220k-point skin patch → ~380 GB)
+    _, _, vt = np.linalg.svd(pts - centroid, full_matrices=False)
     normal = _normalize(vt[-1])
     rms = float(np.sqrt(np.mean(((pts - centroid) @ normal) ** 2)))
     return normal, centroid, rms
@@ -401,6 +402,7 @@ def refine_up_axis_with_skin(
     max_deviation_deg: float = 15.0,
     min_inlier_fraction: float = 0.4,
     min_points: int = 50,
+    max_points: int = 20000,
     seed: int = 0,
 ) -> OrientationChoice:
     """The marker card is flat, but the skin it sits on is not — 20–30 mm from the
@@ -412,6 +414,8 @@ def refine_up_axis_with_skin(
     pts = np.asarray(skin_points, float)
     if len(pts) < min_points:
         return OrientationChoice(marker_normal, "aruco", marker_normal, None, None, None)
+    if len(pts) > max_points:  # a dense reconstruction has 100k+ skin points; subsample
+        pts = pts[np.random.default_rng(seed).choice(len(pts), max_points, replace=False)]
     fit = ransac_plane_normal(pts, threshold=threshold_mm, seed=seed, orient_toward=orient_toward)
     angle = angle_between_axes_deg(fit.normal, marker_normal)
     if fit.inlier_fraction < min_inlier_fraction or angle > max_deviation_deg:

@@ -45,7 +45,9 @@ class MeasureStage:
                 if img is not None:
                     keyframes[name] = img
 
-        mesh = trimesh.load(str(mesh_path), force="mesh", process=False)
+        # process=True merges the duplicated vertex records OBJ exporters emit for
+        # texture seams (3.9M records → 657k vertices on the first real mesh)
+        mesh = trimesh.load(str(mesh_path), force="mesh", process=True)
         vertices = np.asarray(mesh.vertices, dtype=float)
         faces = np.asarray(mesh.faces, dtype=int)
 

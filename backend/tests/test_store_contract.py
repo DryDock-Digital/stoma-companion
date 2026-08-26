@@ -76,3 +76,12 @@ def test_queue_stats_shape(store):
     stats = store.queue_stats()
     assert set(stats) == {"counts", "oldest_claim_age_s"}
     assert isinstance(stats["counts"], dict)
+
+
+def test_large_object_round_trip(store):
+    """> LARGE_OBJECT_BYTES takes the HTTP/1.1 path on Supabase (the 162 MB mesh
+    upload crawled at ~40 KB/s through the HTTP/2 client)."""
+    key = f"contract-{uuid.uuid4()}/big.obj"
+    blob = b"v 0 0 0\n" * (9 * 1024 * 1024 // 8)  # ~9 MB, over the threshold
+    store.put_object(key, blob, "model/obj")
+    assert store.get_object(key) == blob

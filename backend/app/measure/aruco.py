@@ -21,7 +21,14 @@ from dataclasses import dataclass
 
 import numpy as np
 
-ARUCO_DICT = "DICT_4X4_50"  # default only; every detector call accepts a dictionary name
+# Default dictionary. **LEGACY_4X4_50** is OpenCV's DICT_4X4_50 with the inner bits
+# inverted: the legacy generator (`ArUcoMarkerGenerator.swift`) writes OpenCV's bit
+# tables as "dark cell = 1", whereas OpenCV renders bit 1 *white* — so every card
+# printed from the Mac app is the bit-complement of the standard marker (border
+# unchanged). Found on the first real video (2026-08-26): 0/88 frames decoded with
+# DICT_4X4_50, 37/88 with the inverted table. Standard OpenCV names remain selectable.
+ARUCO_DICT = "LEGACY_4X4_50"
+LEGACY_PREFIX = "LEGACY_"
 MAX_SIDE_CV = 0.12  # MeshArUcoOrbitDetector.maxSideCV — reject inconsistent squares
 
 
@@ -34,12 +41,38 @@ class MarkerDetection:
     corners_px: np.ndarray  # (4,2) TL, TR, BR, BL — cv2.aruco order
 
 
-def _aruco_dictionary(name: str = ARUCO_DICT):
+_DICT_CACHE: dict[str, object] = {}
+
+
+def _invert_dictionary(std, marker_bits: int):
+    """A cv2.aruco.Dictionary whose markers are the bit-complement of `std`'s."""
+    import cv2
+
+    rows = []
+    for i in range(std.bytesList.shape[0]):
+        bits = cv2.aruco.Dictionary.getBitsFromByteList(std.bytesList[i : i + 1], marker_bits)
+        rows.append(cv2.aruco.Dictionary.getByteListFromBits(1 - bits))
+    return cv2.aruco.Dictionary(np.vstack(rows), marker_bits, std.maxCorrectionBits)
+
+
+def aruco_dictionary(name: str = ARUCO_DICT):
+    """cv2.aruco.Dictionary by name: any `cv2.aruco.DICT_*`, or `LEGACY_<DICT>` for
+    the bit-inverted form printed by the legacy Mac app (see ARUCO_DICT)."""
     import cv2  # lazy
 
-    if not hasattr(cv2.aruco, name):
+    if name in _DICT_CACHE:
+        return _DICT_CACHE[name]
+    base = name[len(LEGACY_PREFIX) :] if name.startswith(LEGACY_PREFIX) else name
+    attr = base if base.startswith("DICT_") else f"DICT_{base}"
+    if not hasattr(cv2.aruco, attr):
         raise ValueError(f"unknown ArUco dictionary {name!r}")
-    return cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, name))
+    std = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, attr))
+    d = _invert_dictionary(std, std.markerSize) if name.startswith(LEGACY_PREFIX) else std
+    _DICT_CACHE[name] = d
+    return d
+
+
+_aruco_dictionary = aruco_dictionary  # backwards-compatible alias
 
 
 def quad_area_px(corners: np.ndarray) -> float:

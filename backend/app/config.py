@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     grace_ring_mm: float = 3.0  # FR-07, configurable, never hard-coded
     tolerance_mm: float = 1.0  # FR-09
     marker_side_mm: float = 50.0  # printed ArUco card edge length
-    aruco_dict: str = "DICT_4X4_50"
+    aruco_dict: str = "LEGACY_4X4_50"  # cards printed by the legacy Mac app (bit-inverted)
     gcode_dialect: str = "grbl"  # 'grbl' (P4 sim target) | 'stoma-plotter' (legacy)
 
     # --- Queue robustness ---

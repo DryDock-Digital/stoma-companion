@@ -220,11 +220,141 @@ class LoopError(RuntimeError):
     pass
 
 
+#: Real reconstructions have holes; a section chain whose two ends are this close
+#: (relative to its length) is treated as a loop and closed with a straight segment.
+DEFAULT_MAX_GAP_FRAC = 0.15
+#: Snap grid floor in scene units (mm in the wired pipeline). The legacy eps scales
+#: with the mesh span (tuned for metre meshes); on a 30 mm stoma it collapses to
+#: ~3e-4 mm and float noise from the reconstruction breaks every loop.
+MIN_SNAP = 0.02
+
+
 def largest_perimeter_loop(
-    segments: list[tuple[np.ndarray, np.ndarray]], snap_eps: float
+    segments: list[tuple[np.ndarray, np.ndarray]],
+    snap_eps: float,
+    *,
+    max_gap_frac: float = DEFAULT_MAX_GAP_FRAC,
 ) -> np.ndarray:
     """Port of largestPerimeterLoop: snap endpoints onto a grid, build an undirected
-    adjacency, trace degree-2 loops, return the longest as an (N,2) array."""
+    adjacency, trace degree-2 loops, return the longest as an (N,2) array.
+
+    Extension for real meshes: an *open* chain (two endpoints) whose gap is less than
+    `max_gap_frac` of its length is also a candidate (closed across the gap) — a
+    stoma section with a small hole at the skin junction. Long open arcs (skin cut
+    by the region of interest) have a gap comparable to their length and are never
+    picked. Closed loops win ties."""
+
+    adj = _adjacency(segments, snap_eps)
+    best_loop: list[tuple[float, float]] = []
+    best_len = 0.0
+    max_steps = max(16_384, len(segments) * 2, len(adj) * 4)
+
+    for start in adj:
+        if len(adj.get(start, [])) != 2:
+            continue
+        loop = _trace_loop(start, adj, snap_eps, max_steps)
+        if not loop:
+            continue
+        length = sum(math.dist(loop[i], loop[i + 1]) for i in range(len(loop) - 1))
+        length += math.dist(loop[-1], loop[0])
+        if length > best_len:
+            best_len, best_loop = length, loop
+
+    # open chains with a small gap (holes in the reconstruction)
+    if max_gap_frac > 0:
+        for chain in _open_chains(adj):
+            length = sum(math.dist(chain[i], chain[i + 1]) for i in range(len(chain) - 1))
+            gap = math.dist(chain[0], chain[-1])
+            if length <= 0 or gap > max_gap_frac * length:
+                continue
+            if length + gap > best_len:
+                best_len, best_loop = length + gap, chain
+
+    if not best_loop:
+        raise LoopError("Could not trace a closed perimeter from the slice.")
+    return np.array(best_loop, dtype=float)
+
+
+def candidate_loops(
+    segments: list[tuple[np.ndarray, np.ndarray]],
+    snap_eps: float,
+    *,
+    max_gap_frac: float = DEFAULT_MAX_GAP_FRAC,
+) -> list[np.ndarray]:
+    """All closed loops plus closable open chains from a slice, as (N,2) arrays."""
+    adj = _adjacency(segments, snap_eps)
+    max_steps = max(16_384, len(segments) * 2, len(adj) * 4)
+    loops: list[list[tuple[float, float]]] = []
+    seen_starts: set = set()
+    for start in adj:
+        if len(adj.get(start, [])) != 2 or start in seen_starts:
+            continue
+        loop = _trace_loop(start, adj, snap_eps, max_steps)
+        if not loop:
+            continue
+        seen_starts.update(loop)
+        loops.append(loop)
+    if max_gap_frac > 0:
+        for chain in _open_chains(adj):
+            length = sum(math.dist(chain[i], chain[i + 1]) for i in range(len(chain) - 1))
+            gap = math.dist(chain[0], chain[-1])
+            if length > 0 and gap <= max_gap_frac * length:
+                loops.append(chain)
+    return [np.array(lp, dtype=float) for lp in loops if len(lp) >= 3]
+
+
+def select_loop(
+    loops: list[np.ndarray],
+    *,
+    containing: np.ndarray | None = None,
+    min_perimeter: float = 0.0,
+) -> np.ndarray:
+    """Pick the section loop. Default: the longest (legacy). With `containing`
+    (the stoma axis in slice coords): the **smallest** loop enclosing that point —
+    the stoma section always lies inside the skin/mat loop, never the reverse —
+    ignoring loops shorter than `min_perimeter` (noise blobs near the axis)."""
+    if not loops:
+        raise LoopError("Could not trace a closed perimeter from the slice.")
+
+    def perim(lp: np.ndarray) -> float:
+        return float(np.sum(np.linalg.norm(np.roll(lp, -1, axis=0) - lp, axis=1)))
+
+    if containing is None:
+        return max(loops, key=perim)
+    c = np.asarray(containing, dtype=float)
+    inside = [lp for lp in loops if perim(lp) >= min_perimeter and point_in_polygon_2d(c, lp)]
+    if not inside:
+        raise LoopError("No section loop encloses the stoma axis at this height.")
+    return min(inside, key=perim)
+
+
+def _open_chains(adj) -> list[list[tuple[float, float]]]:
+    """Maximal degree-2 paths between endpoints (degree != 2 nodes)."""
+    chains = []
+    visited: set = set()
+    for start, nbrs in adj.items():
+        if len(nbrs) == 2 or not nbrs:
+            continue
+        for first in nbrs:
+            if (start, first) in visited:
+                continue
+            path = [start, first]
+            visited.add((start, first))
+            prev, cur = start, first
+            while len(adj.get(cur, [])) == 2:
+                nxt = next(x for x in adj[cur] if x != prev)
+                if nxt == start:  # closed after all
+                    break
+                path.append(nxt)
+                prev, cur = cur, nxt
+            visited.add((cur, prev))
+            if len(path) >= 3:
+                chains.append(path)
+    return chains
+
+
+def _adjacency(segments, snap_eps: float) -> dict:
+    """Snap segment endpoints to a grid and build the undirected adjacency."""
 
     def snap(p: np.ndarray) -> tuple[float, float]:
         return (round(p[0] / snap_eps) * snap_eps, round(p[1] / snap_eps) * snap_eps)
@@ -248,25 +378,77 @@ def largest_perimeter_loop(
             if not any(math.dist(u, nb) < snap_eps * 0.15 for u in unique):
                 unique.append(nb)
         adj[key] = unique
+    return adj
 
-    best_loop: list[tuple[float, float]] = []
-    best_len = 0.0
-    max_steps = max(16_384, len(segments) * 2, len(adj) * 4)
 
-    for start in adj:
-        if len(adj.get(start, [])) != 2:
-            continue
-        loop = _trace_loop(start, adj, snap_eps, max_steps)
-        if not loop:
-            continue
-        length = sum(math.dist(loop[i], loop[i + 1]) for i in range(len(loop) - 1))
-        length += math.dist(loop[-1], loop[0])
-        if length > best_len:
-            best_len, best_loop = length, loop
+def largest_point_cluster(pts: np.ndarray, cell: float) -> np.ndarray:
+    """Largest 8-connected cluster of 2-D points on a grid of `cell` — used to find
+    the stoma axis from the section points at a probe height."""
+    pts = np.asarray(pts, dtype=float)
+    if len(pts) == 0:
+        return pts
+    keys = np.floor(pts / cell).astype(int)
+    uniq, inv = np.unique(keys, axis=0, return_inverse=True)
+    index = {tuple(k): i for i, k in enumerate(uniq)}
+    parent = list(range(len(uniq)))
 
-    if not best_loop:
-        raise LoopError("Could not trace a closed perimeter from the slice.")
-    return np.array(best_loop, dtype=float)
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i, k in enumerate(uniq):
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                j = index.get((k[0] + dx, k[1] + dy))
+                if j is not None:
+                    parent[find(i)] = find(j)
+    labels = np.array([find(i) for i in range(len(uniq))])[inv.ravel()]
+    best = np.bincount(labels).argmax()
+    return pts[labels == best]
+
+
+def polar_section_outline(
+    segments: list[tuple[np.ndarray, np.ndarray]],
+    axis: np.ndarray,
+    r_ref: float,
+    *,
+    bins: int = 72,
+    min_filled_frac: float = 0.6,
+    r_tol_frac: float = 0.45,
+    r_tol_min: float = 5.0,
+) -> np.ndarray | None:
+    """Topology-free section outline: median radius of the section points per
+    angular bin around `axis`, restricted to points whose radius is near `r_ref`
+    (the stoma's radius at the probe height — keeps skin/mat rim points out).
+    Missing bins are interpolated. Immune to holes and T-junctions; a stoma is
+    star-shaped about its axis so the approximation is faithful. Returns (bins,2)
+    points or None when fewer than `min_filled_frac` of bins have data."""
+    if not segments:
+        return None
+    pts = np.array([p for seg in segments for p in seg], dtype=float) - np.asarray(axis, float)
+    r = np.hypot(pts[:, 0], pts[:, 1])
+    tol = max(r_tol_min, r_tol_frac * r_ref)
+    keep = np.abs(r - r_ref) <= tol
+    if keep.sum() < 3:
+        return None
+    r, ang = r[keep], np.arctan2(pts[keep, 1], pts[keep, 0])
+    idx = np.floor((ang + math.pi) / (2 * math.pi) * bins).astype(int).clip(0, bins - 1)
+    med = np.full(bins, np.nan)
+    for b in np.unique(idx):
+        med[b] = np.median(r[idx == b])
+    filled = np.isfinite(med)
+    if filled.sum() < min_filled_frac * bins:
+        return None
+    # circular interpolation of empty bins
+    if not filled.all():
+        good = np.flatnonzero(filled)
+        ext_x = np.concatenate([good - bins, good, good + bins])
+        ext_y = np.concatenate([med[good]] * 3)
+        med = np.interp(np.arange(bins), ext_x, ext_y)
+    theta = -math.pi + (np.arange(bins) + 0.5) * (2 * math.pi / bins)
+    return np.column_stack([med * np.cos(theta), med * np.sin(theta)]) + np.asarray(axis, float)
 
 
 def _trace_loop(start, adj, snap_eps, max_steps):
@@ -479,6 +661,37 @@ def _convex_hull(pts: np.ndarray) -> np.ndarray:
     return np.array(lower[:-1] + upper[:-1])
 
 
+def perimeter_from_outline(
+    outline: np.ndarray,
+    *,
+    normal: np.ndarray,
+    plane_d: float,
+    axis_u: np.ndarray,
+    axis_v: np.ndarray,
+    floor_h: float,
+    max_h: float,
+) -> PerimeterResult:
+    """Package an (N,2) in-plane outline as a PerimeterResult (same re-origin and
+    resampling as the traced path)."""
+    loop = np.asarray(outline, dtype=float)
+    n = _normalize(np.asarray(normal, dtype=float))
+    origin = polar_origin_2d(loop)
+    centroid_world = point_on_plane(origin[0], origin[1], plane_d, n, axis_u, axis_v)
+    shifted = loop - origin
+    span = max(max_h - floor_h, 1e-6)
+    return PerimeterResult(
+        samples=arc_length_resample(shifted),
+        centroid_world=centroid_world,
+        axis_u=axis_u,
+        axis_v=axis_v,
+        plane_normal=n,
+        plane_constant=plane_d,
+        loop_vertex_count=len(loop),
+        slice_offset_fraction=(plane_d - floor_h) / span,
+        loop_xy=shifted,
+    )
+
+
 def extract_perimeter(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -489,6 +702,9 @@ def extract_perimeter(
     floor_h: float | None = None,
     max_h: float | None = None,
     plane_h: float | None = None,
+    containing: np.ndarray | None = None,
+    min_perimeter: float = 0.0,
+    return_segments: bool = False,
 ) -> PerimeterResult:
     """Slice a mesh (vertices (V,3), faces (F,3)) and return the resampled base
     perimeter. `normal` is the slice up-axis. The plane sits at
@@ -513,8 +729,14 @@ def extract_perimeter(
     axis_u, axis_v = slice_basis(n, spin_degrees)
     eps = max(span * 1e-5, 1e-6)
 
+    # Only faces that straddle (or touch) the plane can contribute — on a real
+    # 1.3M-face reconstruction that is a few thousand, not all of them. The
+    # per-face port below is unchanged; this is a pure prefilter.
+    h = vertices @ n - plane_d
+    fh = h[faces]
+    straddle = (fh.min(axis=1) <= eps) & (fh.max(axis=1) >= -eps)
     segments: list[tuple[np.ndarray, np.ndarray]] = []
-    for f in faces:
+    for f in faces[straddle]:
         segments.extend(
             intersect_triangle_plane(
                 vertices[f[0]], vertices[f[1]], vertices[f[2]], n, plane_d, axis_u, axis_v, eps
@@ -522,9 +744,16 @@ def extract_perimeter(
         )
     if not segments:
         raise LoopError("The slice plane did not intersect the mesh.")
+    if return_segments:
+        return segments  # type: ignore[return-value]
 
-    snap_eps = max(eps * 10, 1e-6)
-    loop = largest_perimeter_loop(segments, snap_eps)
+    snap_eps = max(eps * 10, 1e-6, MIN_SNAP)
+    if containing is None:
+        loop = largest_perimeter_loop(segments, snap_eps)
+    else:
+        loop = select_loop(
+            candidate_loops(segments, snap_eps), containing=containing, min_perimeter=min_perimeter
+        )
     if len(loop) < 3:
         raise LoopError("Slice outline too small/degenerate to resample.")
 

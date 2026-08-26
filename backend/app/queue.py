@@ -24,6 +24,7 @@ A test passes a fake one. See docs/queue-contract.md.
 
 from __future__ import annotations
 
+import gzip
 import logging
 import tempfile
 import threading
@@ -235,7 +236,9 @@ class ReconstructionWorker(_Poller):
                 mesh_key = paths.mesh_key(job.id)
                 poses_key = paths.poses_key(job.id)
                 with timer.stage("upload"):
-                    self.store.put_object(mesh_key, Path(out.mesh_path).read_bytes(), "model/obj")
+                    # gzip: ASCII OBJ compresses ~4x; Supabase rejects objects > 50 MB
+                    mesh_gz = gzip.compress(Path(out.mesh_path).read_bytes(), compresslevel=6)
+                    self.store.put_object(mesh_key, mesh_gz, "application/gzip")
                     self.store.put_object(
                         poses_key, poses_mod.dumps(out.cameras).encode(), "application/json"
                     )
@@ -344,9 +347,8 @@ class MeasurementWorker(_Poller):
                 with timer.stage("download"):
                     _download_keyframes(self.store, job, keyframe_dir)
                     mesh_path = tmp_dir / "mesh.obj"
-                    mesh_path.write_bytes(
-                        self.store.get_object(job.mesh_path or paths.mesh_key(job.id))
-                    )
+                    raw = self.store.get_object(job.mesh_path or paths.mesh_key(job.id))
+                    mesh_path.write_bytes(gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw)
                     cameras = poses_mod.loads(
                         self.store.get_object(job.poses_path or paths.poses_key(job.id))
                     )

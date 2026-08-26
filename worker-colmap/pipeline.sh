@@ -6,7 +6,7 @@
 #   pipeline.sh <image_dir> <work_dir> <output_obj>
 #
 # Assumes colmap + the OpenMVS tools (InterfaceCOLMAP, DensifyPointCloud,
-# ReconstructMesh, TextureMesh) are on PATH — see Dockerfile. Runs on a CUDA GPU
+# ReconstructMesh) and python3+trimesh are on PATH — see Dockerfile. Runs on a CUDA GPU
 # droplet (sizing decided at P1-5).
 set -euo pipefail
 
@@ -75,20 +75,23 @@ InterfaceCOLMAP --working-folder "$MVS" -i "$DENSE" -o "$MVS/scene.mvs"
 echo "[openmvs] densify point cloud"
 DensifyPointCloud --working-folder "$MVS" -i "$MVS/scene.mvs" -o "$MVS/scene_dense.mvs"
 
-echo "[openmvs] reconstruct mesh"
-ReconstructMesh --working-folder "$MVS" -i "$MVS/scene_dense.mvs" -o "$MVS/scene_mesh.mvs"
+echo "[openmvs] reconstruct mesh (decimate=${MESH_DECIMATE:-0.3})"
+# Measurement needs geometry, not texture: skip TextureMesh (it took ~19 min of a
+# 60 min CPU run on the first real video and its output is never read) and decimate
+# the mesh — 650k vertices is ~10x what the base slice needs. MESH_DECIMATE=1 keeps
+# every face; tune against the fixtures, never against one video.
+ReconstructMesh --working-folder "$MVS" \
+  --decimate "${MESH_DECIMATE:-0.3}" \
+  -i "$MVS/scene_dense.mvs" -o "$MVS/scene_mesh.mvs"
 
-echo "[openmvs] texture + export OBJ"
-TextureMesh --working-folder "$MVS" \
-  --export-type obj \
-  -i "$MVS/scene_mesh.mvs" \
-  -o "$MVS/scene_textured.obj"
+echo "[export] PLY → OBJ"
+python3 - "$MVS/scene_mesh.ply" "$OUTPUT_OBJ" <<'PY'
+import sys
+import trimesh
 
-cp "$MVS/scene_textured.obj" "$OUTPUT_OBJ"
-# carry the material/texture sidecars next to the OBJ if TextureMesh emitted them
-for ext in mtl png; do
-  src="$MVS/scene_textured.$ext"
-  [[ -f "$src" ]] && cp "$src" "$(dirname "$OUTPUT_OBJ")/" || true
-done
+mesh = trimesh.load(sys.argv[1], force="mesh", process=False)
+mesh.export(sys.argv[2], file_type="obj", include_texture=False)
+print(f"[export] {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
+PY
 
 echo "[done] mesh → $OUTPUT_OBJ"
