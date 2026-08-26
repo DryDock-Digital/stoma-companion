@@ -50,6 +50,7 @@ ARG CUDA_APT_VERSION=12-9
 ARG CUDA_ARCH=89
 RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-nvcc-${CUDA_APT_VERSION} cuda-cudart-dev-${CUDA_APT_VERSION} \
+        cuda-driver-dev-${CUDA_APT_VERSION} \
     && rm -rf /var/lib/apt/lists/*
 ENV PATH="/usr/local/cuda/bin:${PATH}"
 
@@ -60,7 +61,8 @@ RUN git clone https://github.com/cdcseacave/VCG.git vcglib && git -C vcglib chec
     mkdir openMVS_build && cd openMVS_build && \
     cmake ../openMVS -DCMAKE_BUILD_TYPE=Release -DVCG_ROOT=/opt/vcglib \
           -DOpenMVS_USE_CUDA=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
-          -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} && \
+          -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
+          -DCUDA_CUDA_LIBRARY=/usr/local/cuda/lib64/stubs/libcuda.so && \
     make -j"$(nproc)" && make install && \
     ldconfig
 ENV PATH="/usr/local/bin/OpenMVS:${PATH}"
