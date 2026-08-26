@@ -41,12 +41,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends libtinyxml2-dev
 # OpenMVS pinned to the same tag as the CPU image (v2.1.0 matches the OpenCV/CGAL
 # that ship with the COLMAP base). The JPEGXL sed is a no-op on v2.1.0 and kept
 # only so a deliberate bump to master still builds.
+# The COLMAP base image ships the CUDA *runtime* but no compiler, so OpenMVS would
+# silently build CPU-only (dense stereo then takes minutes, not seconds). Install nvcc
+# from the CUDA apt repo the base image already configures, matching its runtime
+# version, and build OpenMVS with CUDA for the worker's GPU (CUDA_ARCH: 89 = Ada
+# RTX 6000/4090, 90 = H100, 86 = A10/A40/3090).
+ARG CUDA_APT_VERSION=12-9
+ARG CUDA_ARCH=89
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        cuda-nvcc-${CUDA_APT_VERSION} cuda-cudart-dev-${CUDA_APT_VERSION} \
+    && rm -rf /var/lib/apt/lists/*
+ENV PATH="/usr/local/cuda/bin:${PATH}"
+
 RUN git clone https://github.com/cdcseacave/VCG.git vcglib && git -C vcglib checkout --quiet "$VCGLIB_REF" && \
     git clone --depth 1 --branch "$OPENMVS_REF" https://github.com/cdcseacave/openMVS.git openMVS && \
     grep -rl IMWRITE_JPEGXL_QUALITY openMVS \
         | xargs -r sed -i 's/IMWRITE_JPEGXL_QUALITY/IMWRITE_JPEG_QUALITY/g' || true && \
     mkdir openMVS_build && cd openMVS_build && \
-    cmake ../openMVS -DCMAKE_BUILD_TYPE=Release -DVCG_ROOT=/opt/vcglib && \
+    cmake ../openMVS -DCMAKE_BUILD_TYPE=Release -DVCG_ROOT=/opt/vcglib \
+          -DOpenMVS_USE_CUDA=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+          -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} && \
     make -j"$(nproc)" && make install && \
     ldconfig
 ENV PATH="/usr/local/bin/OpenMVS:${PATH}"
