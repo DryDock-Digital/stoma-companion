@@ -48,6 +48,11 @@ else
   OPT_MATCH_GPU="--SiftMatching.use_gpu"
 fi
 
+# Per-step wall-clock, printed as "[t] <step>=<seconds>" and parsed into the job's
+# diagnostics by reconstruct.py, so every run carries its own breakdown.
+STEP_T0=$(date +%s.%N)
+tick() { local now; now=$(date +%s.%N); awk -v a="$STEP_T0" -v b="$now" -v n="$1" 'BEGIN{printf "[t] %s=%.1f\n", n, b-a}'; STEP_T0=$now; }
+
 # Record which GPU (if any) this run had — surfaces on the admin run page.
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 > "$WORK_DIR/gpu.txt" || true
@@ -63,6 +68,7 @@ colmap feature_extractor \
   "$OPT_EXTRACT_MAXSIZE" "$MAX_IMAGE_SIZE" \
   --SiftExtraction.max_num_features "$MAX_FEATURES"
 
+tick features
 echo "[colmap] sequential matching"
 colmap sequential_matcher \
   --database_path "$DB" \
@@ -70,6 +76,7 @@ colmap sequential_matcher \
   --SequentialMatching.overlap "$SEQ_OVERLAP" \
   --SequentialMatching.loop_detection 0
 
+tick matching
 echo "[colmap] sparse mapping"
 colmap mapper \
   --database_path "$DB" \
@@ -77,6 +84,7 @@ colmap mapper \
   --output_path "$SPARSE" \
   --Mapper.ba_global_max_num_iterations 25
 
+tick mapper
 MODEL="$SPARSE/0"
 if [[ ! -d "$MODEL" ]]; then
   echo "[colmap] mapping produced no model — reconstruction failed" >&2
@@ -91,6 +99,7 @@ colmap image_undistorter \
   --output_type COLMAP \
   --max_image_size "$MAX_IMAGE_SIZE"
 
+tick undistort
 # Poses as TXT into the work dir — reconstruct.py converts them to the engine-neutral
 # poses.json (docs/queue-contract.md).
 echo "[colmap] export sparse poses (TXT)"
@@ -98,6 +107,7 @@ SPARSE_TXT="$WORK_DIR/sparse_txt"
 mkdir -p "$SPARSE_TXT"
 colmap model_converter --input_path "$MODEL" --output_path "$SPARSE_TXT" --output_type TXT
 
+tick poses
 # --- Dense reconstruction ----------------------------------------------------
 # auto → OpenMVS (built with CUDA in the GPU image, CPU in the CPU image). COLMAP's
 # own patch-match is kept as an option but measured at ~24 s/frame on an RTX 6000
@@ -115,6 +125,7 @@ if [[ "$DENSE_ENGINE" == "colmap" ]]; then
     --PatchMatchStereo.num_iterations "${PMS_ITERATIONS:-5}" \
     --PatchMatchStereo.window_radius "${PMS_WINDOW_RADIUS:-5}"
 
+  tick patch_match
   echo "[colmap] stereo fusion"
   colmap stereo_fusion \
     --workspace_path "$DENSE" \
@@ -123,6 +134,7 @@ if [[ "$DENSE_ENGINE" == "colmap" ]]; then
     --StereoFusion.max_image_size "$MAX_IMAGE_SIZE" \
     --output_path "$DENSE/fused.ply"
 
+  tick fusion
   echo "[colmap] poisson mesh (depth=${POISSON_DEPTH:-10}, trim=${POISSON_TRIM:-7})"
   colmap poisson_mesher \
     --input_path "$DENSE/fused.ply" \
@@ -130,6 +142,7 @@ if [[ "$DENSE_ENGINE" == "colmap" ]]; then
     --PoissonMeshing.depth "${POISSON_DEPTH:-10}" \
     --PoissonMeshing.trim "${POISSON_TRIM:-7}"
 
+  tick poisson
   echo "[export] PLY → OBJ (decimate=$DECIMATE)"
   python3 - "$DENSE/meshed-poisson.ply" "$OUTPUT_OBJ" "$DECIMATE" <<'PY'
 import sys
@@ -145,6 +158,7 @@ if 0 < frac < 1 and len(mesh.faces) > 200_000:
 mesh.export(sys.argv[2], file_type="obj", include_texture=False)
 print(f"[export] {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
 PY
+  tick export
   echo "[done] mesh → $OUTPUT_OBJ"
   exit 0
 fi
@@ -157,6 +171,7 @@ ln -sfn "$DENSE/images" "$MVS/images"
 echo "[openmvs] interface"
 InterfaceCOLMAP --working-folder "$MVS" -i "$DENSE" -o "$MVS/scene.mvs"
 
+tick interface
 echo "[openmvs] densify point cloud (level=$MVS_RES_LEVEL views=$MVS_VIEWS max_res=$MVS_MAX_RES)"
 DensifyPointCloud --working-folder "$MVS" \
   --resolution-level "$MVS_RES_LEVEL" \
@@ -164,11 +179,13 @@ DensifyPointCloud --working-folder "$MVS" \
   --max-resolution "$MVS_MAX_RES" \
   -i "$MVS/scene.mvs" -o "$MVS/scene_dense.mvs"
 
+tick densify
 echo "[openmvs] reconstruct mesh (decimate=$DECIMATE)"
 ReconstructMesh --working-folder "$MVS" \
   --decimate "$DECIMATE" \
   -i "$MVS/scene_dense.mvs" -o "$MVS/scene_mesh.mvs"
 
+tick mesh
 echo "[export] PLY → OBJ"
 python3 - "$MVS/scene_mesh.ply" "$OUTPUT_OBJ" <<'PY'
 import sys
@@ -179,4 +196,5 @@ mesh.export(sys.argv[2], file_type="obj", include_texture=False)
 print(f"[export] {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
 PY
 
+tick export
 echo "[done] mesh → $OUTPUT_OBJ"

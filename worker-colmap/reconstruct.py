@@ -7,6 +7,7 @@ pipeline.sh."""
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -54,6 +55,10 @@ class ColmapReconstructor:
         if proc.returncode != 0:
             tail = (proc.stderr or proc.stdout or "")[-2000:]
             raise ReconstructError(f"pipeline.sh exited {proc.returncode}: {tail}")
+        step_timings = {
+            m.group(1): float(m.group(2))
+            for m in re.finditer(r"^\[t\] (\w+)=([0-9.]+)$", proc.stdout or "", re.M)
+        }
         if not output_obj.exists():
             raise ReconstructError("pipeline.sh completed but produced no mesh.obj")
 
@@ -94,5 +99,6 @@ class ColmapReconstructor:
                 "gpu": settings_used["COLMAP_USE_GPU"] == "1",
                 "gpu_name": gpu_name,
                 "settings": settings_used,
+                "step_timings_s": step_timings,
             },
         )
