@@ -28,8 +28,9 @@ dev = [
 ]
 
 [project.scripts]
-# One-command verification scoreboard (P2-1). Needs the `measure` extra.
+# Verification scoreboards (P2-1, P2-2). Need the `measure` extra.
 stoma-score = "app.verify.__main__:main"
+stoma-score-orientation = "app.verify.orientation:main"
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -3,7 +3,18 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
-## D9 — 2026-08-25 · Measurement port (P1-6…P1-8): deterministic core in Python, auto-orientation + mesh-render stay deferred
+## D10 — 2026-08-26 · P2-2 marker-plane orientation validated on synthetic scenes; real-footage deferred
+"Up" (FR-04) is recovered by triangulating the ArUco marker's corners across
+multiple views (known camera poses) and fitting their plane — normal oriented toward
+the cameras. Implemented as pure-numpy geometry (`measure/orientation.py`: pinhole
+camera, DLT triangulation, SVD plane fit) so it's engine-agnostic: in production the
+views/poses come from COLMAP; here from a synthetic renderer (`verify/synthetic.py`)
+that warps a real cv2.aruco marker into views at *known* poses, so recovery is scored
+against ground-truth normals (`stoma-score-orientation`). Synthetic recovery is
+sub-0.1° across 0–30° tilts. No physical capture — real-footage validation is
+deferred with the rest of the fixture work (P0-3). The recovered normal drops
+straight into `slicing.extract_perimeter(normal=…)`; scoring it on the P2-1 *diameter*
+board needs mesh+marker fixtures, so that wiring waits for P0-3 too.
 The Swift measurement maths are ported to `backend/app/measure/` (slicing, metrics,
 outline, gcode, aruco) as pure deterministic functions with synthetic-geometry
 parity tests; fixture parity joins at P0-3. Scope calls, all faithful to the tickets:

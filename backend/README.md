@@ -24,22 +24,26 @@ app/
     metrics.py     feret/radial/perimeter/area/diameter (P1-7)
     outline.py     Ideal-Fit grace-ring offset, FR-07 (P1-8)
     gcode.py       perimeter G-code + polar path plan (P1-8)
-  verify/        verification harness — scores measured-vs-truth vs ±1 mm (P2-1):
+  verify/        verification harnesses (P2-1, P2-2):
     fixtures.py    discover/load fixtures (mesh + truth + scale + params)
-    harness.py     pluggable MeasurementMethod → Scoreboard (deviation, margin, CSV)
+    harness.py     diameter board: MeasurementMethod → Scoreboard (deviation vs ±1 mm)
     __main__.py    the `stoma-score` CLI
+    synthetic.py   synthetic ArUco scenes (rendered views at known poses) — P2-2
+    orientation.py orientation board: recovered "up" vs known normal; `stoma-score-orientation`
+  measure/orientation.py   pinhole camera + triangulation + plane fit (P2-2)
 tests/           pytest; no Supabase, no GPU, ffmpeg only for extractor integration
 ```
 
-## Scoreboard (P2-1)
+## Scoreboards
 
 ```bash
-stoma-score                    # score fixtures/ with the baseline method, ±1 mm
+stoma-score                    # P2-1: diameter vs caliper truth, ±1 mm, over fixtures/
+stoma-score-orientation        # P2-2: marker-plane "up" recovery vs known truth (synthetic)
 ```
 
-Prints per-fixture deviation + pass/fail + aggregates and exits non-zero on any
-miss. Each P2 algorithm ticket adds a `MeasurementMethod` scored on the same board;
-it grows into the P5 test-log module. See `fixtures/README.md` for the input schema.
+Both print per-item deviation + pass/fail + aggregates and exit non-zero on any
+miss. Each P2 algorithm ticket reports on one of these boards; they grow into the P5
+test-log module. See `fixtures/README.md` for the diameter-board input schema.
 
 The `measure/` package needs numpy/trimesh/opencv (the `measure` extra); it's kept
 out of the base install so the API image stays lean, and imported lazily. Its
