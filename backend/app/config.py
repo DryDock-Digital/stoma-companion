@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     # --- Measurement ---
     grace_ring_mm: float = 3.0  # FR-07, configurable, never hard-coded
 
+    # --- Web app (P3) ---
+    # Comma-separated allowed CORS origins; "*" for the demo phase.
+    cors_origins: str = "*"
+
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024

@@ -41,12 +41,12 @@ CLAUDE.md. FR/NFR references are to docs/PRD v0.2.
 
 ## P3 — Patient App (Web + Capacitor)
 
-- [ ] **P3-1 · Web scaffold** — SPA (React or similar) against the backend API; Capacitor config for iOS + Android shells building empty.
-- [ ] **P3-2 · Capture screen** — guided video recording (MediaRecorder or Capacitor camera per P0-6 verdict); large targets, one action per screen, no jargon (NFR-05).
-- [ ] **P3-3 · Upload + progress flow** — upload with retry, job polling, progress states: uploading → reconstructing → measuring → cutting → done (FR-12). Network-drop handling defined.
-- [ ] **P3-4 · Result / demo view** — "here is the measurement, here is the outline": measurement, outline overlay, deviation vs tolerance — investor-legible (FR-14). No parameters exposed anywhere in patient flow (FR-13).
-- [ ] **P3-5 · Polish pass** — visual quality to demo standard (NFR-06); Cole sign-off.
-- [ ] **P3-6 · Device matrix check** — same build verified in desktop browser, on an iPhone (Capacitor), and an Android phone (Capacitor) against the same API.
+- [x] **P3-1 · Web scaffold** — SPA (React or similar) against the backend API; Capacitor config for iOS + Android shells building empty. *(done 2026-08-26 — Vite+React+TS in `web/`, dark design system, API client, flow state machine, `capacitor.config.ts`; backend CORS added. Builds clean, ~57 kB gz.)*
+- [x] **P3-2 · Capture screen** — guided video recording (MediaRecorder or Capacitor camera per P0-6 verdict); large targets, one action per screen, no jargon (NFR-05). *(done 2026-08-26 — `screens/Capture.tsx`: rear-camera viewfinder + reticle, one big shutter, recording ring/countdown, graceful fallback to a sample when the camera can't record.)*
+- [x] **P3-3 · Upload + progress flow** — upload with retry, job polling, progress states: uploading → reconstructing → measuring → cutting → done (FR-12). Network-drop handling defined. *(done 2026-08-26 — `api/client.ts` upload retry + poll with network-drop tolerance; `Processing` shows a progress ring + phase stepper. Simulated flow when no backend is configured.)*
+- [x] **P3-4 · Result / demo view** — "here is the measurement, here is the outline": measurement, outline overlay, deviation vs tolerance — investor-legible (FR-14). No parameters exposed anywhere in patient flow (FR-13). *(done 2026-08-26 — `Result` + `OutlineChart`: big diameter, ±1 mm badge, base + wafer outlines with caliper & scale. No parameters exposed.)*
+- [ ] **P3-5 · Polish pass** — visual quality to demo standard (NFR-06); Cole sign-off. *Visual quality is at demo standard (verified via screenshots across all four screens); Cole sign-off pending.*
+- [ ] **P3-6 · Device matrix check** — same build verified in desktop browser, on an iPhone (Capacitor), and an Android phone (Capacitor) against the same API. *Verified in desktop browser; iPhone/Android Capacitor passes need real devices — deferred.*
 
 ## P4 — Device Connectivity (deferred — starts after the measurement pipeline proves tolerance; see decisions.md D6)
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings, get_settings
 from .pipeline import run_keyframe_stage
@@ -26,6 +27,16 @@ def create_app(store: JobStore | None = None, settings: Settings | None = None) 
     app.state.store = store or build_store(settings)
     # Default processor is the real keyframe stage; tests override app.state.processor.
     app.state.processor = run_keyframe_stage
+
+    # The web/Capacitor patient app is a separate origin (P3) and talks only to this
+    # API. Origins are configurable; default "*" is fine for the demo phase (no auth,
+    # no PHI yet — NFR-07). Tighten to the app origin before anything real.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allow_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:

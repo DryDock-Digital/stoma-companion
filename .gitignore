@@ -16,6 +16,7 @@ venv/
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
 
 # Capacitor native build output
 web/ios/App/Pods/

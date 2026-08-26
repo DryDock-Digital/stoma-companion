@@ -3,6 +3,20 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D13 — 2026-08-26 · Patient app: Vite+React+TS+Tailwind, custom dark design system, demo-first
+The web app (`web/`, P3-1…P3-4) is Vite + React + TypeScript + Tailwind with a
+hand-built dark design system (no UI framework) — tokens in `tailwind.config.js` +
+`src/index.css`, big rounded controls, teal accent on near-black, one action per
+screen, plain language (FR-13/NFR-05). Flow: Welcome → Capture (MediaRecorder) →
+Processing (progress ring + phase stepper) → Result (diameter + outline/wafer overlay
++ ±1 mm badge). It talks *only* to the backend API. Two run modes: with `VITE_API_BASE`
+set it hits the real service; with it unset it runs a fully **simulated** flow (fake
+progress + a sample measurement) so the app is demoable anywhere and reviewable now —
+useful because the backend measurement result isn't wired until P1-10. Backend gained
+permissive CORS (configurable, "*" for the demo phase; tighten before PHI). Capacitor
+config is in place; native iOS/Android device passes (P3-6) + Cole's polish sign-off
+(P3-5) need real devices/people and are deferred.
+
 ## D12 — 2026-08-26 · P2-5/P2-6: build the rigs now, get real numbers on real footage
 Both tickets are empirical — the answers depend on COLMAP's behaviour on genuine
 video — so what's built now is the *instrumentation*, not fabricated numbers.
