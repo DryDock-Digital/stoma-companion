@@ -151,3 +151,24 @@ def test_params_round_trip_through_job_config():
     assert p.truth_mm == 33.2
     back = p.to_config()
     assert back["slice_margin_mm"] == 2.0 and back["grace_ring_mm"] == 2.5
+
+
+def test_axis_prefers_the_object_next_to_the_card():
+    """A bigger object 100 mm away (table edge, the patient's body) must not be
+    mistaken for the stoma: the axis is the plausible cluster nearest the card."""
+    cams, imgs = _scene()
+    verts, faces = _stoma_on_skin_with_junk()
+    big = trimesh.creation.cylinder(radius=30.0, height=25.0, sections=96)
+    big.apply_translation([-95.0, 40.0, 12.5])  # far from the card at x=+70
+    mesh = trimesh.util.concatenate([trimesh.Trimesh(verts, faces, process=False), big])
+    res = measure_scan(
+        np.asarray(mesh.vertices, float),
+        np.asarray(mesh.faces, int),
+        cams,
+        imgs,
+        marker_side_mm=MARKER_SIDE,
+        marker_id=7,
+        truth_mm=33.0,
+    )
+    assert res.diameter_mm == pytest.approx(33.0, abs=0.4)
+    assert res.extra["axis_to_card_mm"] < 90

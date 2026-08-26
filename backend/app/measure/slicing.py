@@ -381,12 +381,11 @@ def _adjacency(segments, snap_eps: float) -> dict:
     return adj
 
 
-def largest_point_cluster(pts: np.ndarray, cell: float) -> np.ndarray:
-    """Largest 8-connected cluster of 2-D points on a grid of `cell` — used to find
-    the stoma axis from the section points at a probe height."""
+def point_clusters(pts: np.ndarray, cell: float) -> list[np.ndarray]:
+    """8-connected clusters of 2-D points on a grid of `cell`, largest first."""
     pts = np.asarray(pts, dtype=float)
     if len(pts) == 0:
-        return pts
+        return []
     keys = np.floor(pts / cell).astype(int)
     uniq, inv = np.unique(keys, axis=0, return_inverse=True)
     index = {tuple(k): i for i, k in enumerate(uniq)}
@@ -405,8 +404,14 @@ def largest_point_cluster(pts: np.ndarray, cell: float) -> np.ndarray:
                 if j is not None:
                     parent[find(i)] = find(j)
     labels = np.array([find(i) for i in range(len(uniq))])[inv.ravel()]
-    best = np.bincount(labels).argmax()
-    return pts[labels == best]
+    counts = np.bincount(labels)
+    order = np.argsort(-counts)
+    return [pts[labels == lab] for lab in order if counts[lab] > 0]
+
+
+def largest_point_cluster(pts: np.ndarray, cell: float) -> np.ndarray:
+    clusters = point_clusters(pts, cell)
+    return clusters[0] if clusters else np.asarray(pts, dtype=float)
 
 
 def polar_section_outline(

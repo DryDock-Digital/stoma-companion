@@ -69,6 +69,10 @@ class MeasureParams:
     axis_probe_mm: float = 10.0
     #: loops shorter than this are noise, never the stoma section (mm)
     min_section_perimeter_mm: float = 30.0
+    #: plausible stoma section radius at the axis probe height (mm); clusters outside
+    #: this are background, never the stoma
+    stoma_radius_min_mm: float = 4.0
+    stoma_radius_max_mm: float = 40.0
     # peristomal-skin band used for the RANSAC "up" refinement (mm from marker plane)
     skin_band_mm: float = 4.0
     skin_ransac_threshold_mm: float = 1.5
@@ -262,7 +266,18 @@ def measure_scan(
     if max_h - floor_h < 1.0:
         raise MeasureError("nothing rises above the skin plane inside the region of interest")
     probe = min(floor_h + params.axis_probe_mm, floor_h + 0.6 * (max_h - floor_h))
-    found = stoma_axis(roi_v, roi_f, normal, floor_h=floor_h, max_h=max_h, probe_h=probe)
+    au, av = slicing.slice_basis(normal)
+    card_uv = np.array([float(marker_centre_mm @ au), float(marker_centre_mm @ av)])
+    found = stoma_axis(
+        roi_v,
+        roi_f,
+        normal,
+        floor_h=floor_h,
+        max_h=max_h,
+        probe_h=probe,
+        near=card_uv,
+        radius_range=(params.stoma_radius_min_mm, params.stoma_radius_max_mm),
+    )
     if found is None:
         raise MeasureError("no stoma section found above the skin plane")
     axis, r_ref = found
@@ -381,6 +396,8 @@ def measure_scan(
             "skin_inlier_fraction": choice.skin_inlier_fraction,
             "slice_height_mm_above_skin": plane_h - floor_h,
             "stoma_axis_uv": [float(axis[0]), float(axis[1])],
+            "card_uv": [float(card_uv[0]), float(card_uv[1])],
+            "axis_to_card_mm": float(np.linalg.norm(axis - card_uv)),
             "stoma_probe_radius_mm": r_ref,
             "outline_method": outline_method,
             "polar_diameter_at_base_mm": polar_d,

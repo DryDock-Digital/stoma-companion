@@ -91,20 +91,45 @@ def _segments(vertices, faces, normal, *, floor_h, max_h, plane_h):
         return []
 
 
-def stoma_axis(vertices, faces, normal, *, floor_h, max_h, probe_h: float, cell: float = 2.0):
-    """((u, v) of the stoma axis in slice coordinates, reference radius): centroid
-    and median radius of the largest cluster of section points at `probe_h`
-    (absolute height). None if nothing is cut."""
+def stoma_axis(
+    vertices,
+    faces,
+    normal,
+    *,
+    floor_h,
+    max_h,
+    probe_h: float,
+    cell: float = 2.0,
+    near=None,
+    radius_range=(4.0, 40.0),
+    min_points: int = 10,
+):
+    """((u, v) of the stoma axis in slice coordinates, reference radius).
+
+    Section points at `probe_h` are clustered; among clusters that look like a
+    stoma section (median radius within `radius_range`, ≥ `min_points`) the one
+    **closest to `near`** (the card centre in slice coords) wins — the card is always
+    placed next to the stoma, background objects are not. Taking the *largest*
+    cluster picked a table edge 100 mm away on the first GPU reconstruction. Without
+    `near`, the largest plausible cluster is used. None if nothing is cut."""
     segs = _segments(vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=probe_h)
     if not segs:
         return None
     pts = np.array([p for s in segs for p in s])
-    cl = slicing.largest_point_cluster(pts, cell)
-    if len(cl) < 10:
+    candidates = []
+    for cl in slicing.point_clusters(pts, cell):
+        if len(cl) < min_points:
+            continue
+        axis = cl.mean(axis=0)
+        r_ref = float(np.median(np.hypot(*(cl - axis).T)))
+        if radius_range[0] <= r_ref <= radius_range[1]:
+            candidates.append((axis, r_ref, len(cl)))
+    if not candidates:
         return None
-    axis = cl.mean(axis=0)
-    r_ref = float(np.median(np.hypot(*(cl - axis).T)))
-    return axis, r_ref
+    if near is not None:
+        near = np.asarray(near, dtype=float)
+        candidates.sort(key=lambda c: float(np.linalg.norm(c[0] - near)))
+    return candidates[0][0], candidates[0][1]
 
 
 def polar_diameter_profile(
