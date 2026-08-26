@@ -71,3 +71,24 @@ def test_auto_height_passes_where_fixed_midslice_fails(tmp_path):
     # auto-height finds the base → 33 mm
     assert auto.passed
     assert auto.measured_mm == pytest.approx(33.0, abs=0.5)
+
+
+def test_base_is_the_neck_not_the_fillet():
+    """Profile of the first real video: skin flare 39→33 mm over the first 2 mm,
+    neck ≈ 33.1 at 2.5–3.7 mm, then the bulge. The base must land on the neck."""
+    from app.measure.slice_height import SliceHeightParams, base_height_from_profile
+
+    h = np.array([0.7, 1.3, 1.9, 2.5, 3.1, 3.7, 4.3, 4.9, 5.5, 6.1, 6.7, 7.3, 8.0])
+    d = np.array([39.4, 35.9, 33.7, 33.1, 33.1, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.6, 33.7])
+    base = base_height_from_profile(h, d, SliceHeightParams())
+    assert 2.5 <= base <= 3.7
+    assert d[list(h).index(base)] == 33.1
+
+
+def test_neck_rule_on_flat_profile_stays_near_junction():
+    from app.measure.slice_height import SliceHeightParams, base_height_from_profile
+
+    h = np.linspace(0.5, 12, 24)
+    d = np.where(h < 2, 50.0, 33.0)  # slab then a perfect cylinder
+    base = base_height_from_profile(h, d, SliceHeightParams())
+    assert 2.0 <= base <= 7.5 and d[list(h).index(base)] == 33.0

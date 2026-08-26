@@ -29,8 +29,11 @@ from . import slicing
 @dataclass(frozen=True)
 class SliceHeightParams:
     n_levels: int = 32
-    #: slice this far above the detected skin junction (mm)
-    margin_mm: float = 1.0
+    #: search for the base (the neck) starting this far above the skin junction (mm)
+    margin_mm: float = 0.5
+    #: … and up to this far above it: the base is the narrowest section in that window
+    #: — what calipers close on — not a fixed offset that can land on the skin fillet
+    neck_window_mm: float = 5.0
     #: a downward area step must exceed this fraction of the max area to count as
     #: the skin→stoma junction; otherwise fall back to the widest section
     junction_drop_frac: float = 0.2
@@ -188,18 +191,34 @@ def _junction_height(heights: np.ndarray, areas: np.ndarray, drop_frac: float) -
 
 
 def base_height_from_profile(heights, diameters, params: SliceHeightParams = DEFAULT_PARAMS):
-    """Base slice height from the Ø-vs-height profile: the skin→stoma junction is
-    the largest downward step in Ø going up from the floor (skin/mat flare → stoma);
-    slice `margin_mm` above it. With no step, the lowest valid level + margin."""
+    """Base slice height from the Ø-vs-height profile.
+
+    1. The skin→stoma junction is the largest downward step in Ø going up from the
+       floor (skin/mat flare → stoma). With no clear step, the lowest valid level.
+    2. The base is the **neck**: the narrowest section within
+       [junction + margin_mm, junction + neck_window_mm] on a lightly smoothed
+       profile — what calipers close on at the skin. A fixed "junction + 1 mm" landed
+       on the fillet where Ø still falls ~4 mm/mm, and two reconstructions of the same
+       video disagreed by 1.3 mm there while agreeing within 0.1 mm at the neck.
+    """
     valid = np.isfinite(diameters)
     if not valid.any():
         return None
     h, d = heights[valid], diameters[valid]
     steps = d[:-1] - d[1:]
     j = int(np.argmax(steps)) if len(steps) else 0
-    if len(steps) and steps[j] > params.junction_drop_frac * np.nanmax(d):
-        return float(h[j + 1] + params.margin_mm)
-    return float(h[0] + params.margin_mm)
+    junction = (
+        float(h[j + 1])
+        if len(steps) and steps[j] > params.junction_drop_frac * np.nanmax(d)
+        else float(h[0])
+    )
+    lo, hi = junction + params.margin_mm, junction + params.neck_window_mm
+    window = (h >= lo) & (h <= hi)
+    if not window.any():
+        return min(lo, float(h[-1]))
+    smooth = np.convolve(np.pad(d, 1, mode="edge"), np.ones(3) / 3, mode="valid")
+    idx = np.flatnonzero(window)
+    return float(h[idx[int(np.argmin(smooth[idx]))]])
 
 
 def auto_slice_height(
