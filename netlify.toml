@@ -1,6 +1,7 @@
-# Netlify build config for the patient web app (P3). Builds web/ in demo mode
-# (no VITE_API_BASE → simulated flow + sample result) and serves it over HTTPS so
-# the live camera works on phones. Source stays private; Netlify only reads to build.
+# Netlify build config for the web app (P3 patient flow + /admin test bench).
+# Served over HTTPS so the live camera works on phones. VITE_API_BASE points the
+# build at the live backend (HTTPS via Caddy on the droplet); set VITE_SIMULATE=1 in
+# the Netlify UI for an investor-safe demo build that never touches the backend.
 [build]
   base = "web"
   command = "npm run build"
@@ -8,6 +9,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  VITE_API_BASE = "https://159-65-233-200.sslip.io"
 
 # Single-page app: serve index.html for any path.
 [[redirects]]

@@ -280,7 +280,8 @@ async def admin_patch_scan(
     provided = patch.model_dump(exclude_unset=True)
     for key in _TRUTH_KEYS:
         if key in provided:
-            cfg[key] = provided[key]
+            value = provided[key]
+            cfg[key] = None if isinstance(value, str) and not value.strip() else value
     job = store.update_job(job.id, config=cfg)
 
     # recompute deviation/pass on the stored result so the patient API agrees too

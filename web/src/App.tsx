@@ -8,10 +8,19 @@ import { Capture } from "./screens/Capture";
 import { Processing } from "./screens/Processing";
 import { Result } from "./screens/Result";
 import { Welcome } from "./screens/Welcome";
+import { Admin } from "./screens/Admin";
+
+// Engineer test bench lives at /admin. The patient flow never links to it.
+const IS_ADMIN = window.location.pathname.startsWith("/admin");
 
 type Step = "welcome" | "capture" | "processing" | "result";
 
 export function App() {
+  if (IS_ADMIN) return <Admin />;
+  return <PatientApp />;
+}
+
+function PatientApp() {
   const [step, setStep] = useState<Step>("welcome");
   const [video, setVideo] = useState<Blob | null>(null);
   const [resumeId, setResumeId] = useState<string | null>(null);

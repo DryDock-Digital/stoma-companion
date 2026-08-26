@@ -113,9 +113,10 @@ def test_patch_truth_recomputes_and_syncs_run_log():
     assert d2["within_tolerance"] is True and len(runs.list()) == 1
     assert runs.list()[0].id == d["run"]["id"]
 
-    # clearing truth clears deviation
-    d3 = client.patch(f"/admin/scans/{job_id}", json={"truth_mm": None}).json()
+    # clearing truth clears deviation; empty strings clear text fields
+    d3 = client.patch(f"/admin/scans/{job_id}", json={"truth_mm": None, "notes": ""}).json()
     assert d3["deviation_mm"] is None and d3["within_tolerance"] is None
+    assert d3["notes"] is None
 
 
 def test_gcode_and_csv_downloads():
