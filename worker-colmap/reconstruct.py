@@ -66,7 +66,7 @@ class ColmapReconstructor:
             k: os.environ.get(k, v)
             for k, v in (
                 ("COLMAP_USE_GPU", "1"),
-                ("DENSE_ENGINE", "auto"),
+                ("DENSE_ENGINE", "openmvs"),
                 ("PMS_ITERATIONS", "5"),
                 ("PMS_WINDOW_RADIUS", "5"),
                 ("POISSON_DEPTH", "10"),

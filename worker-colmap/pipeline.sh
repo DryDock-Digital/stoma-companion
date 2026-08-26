@@ -99,11 +99,10 @@ mkdir -p "$SPARSE_TXT"
 colmap model_converter --input_path "$MODEL" --output_path "$SPARSE_TXT" --output_type TXT
 
 # --- Dense reconstruction ----------------------------------------------------
-# auto: COLMAP's own CUDA patch-match when a GPU is present (OpenMVS in the CUDA image
-# is CPU-only — the COLMAP base has no nvcc), else OpenMVS on CPU.
-if [[ "$DENSE_ENGINE" == "auto" ]]; then
-  if [[ "$USE_GPU" == "1" && -s "$WORK_DIR/gpu.txt" ]]; then DENSE_ENGINE=colmap; else DENSE_ENGINE=openmvs; fi
-fi
+# auto → OpenMVS (built with CUDA in the GPU image, CPU in the CPU image). COLMAP's
+# own patch-match is kept as an option but measured at ~24 s/frame on an RTX 6000
+# Ada (two passes, 20 source views) — far too slow for the 60 s target.
+if [[ "$DENSE_ENGINE" == "auto" ]]; then DENSE_ENGINE=openmvs; fi
 echo "[dense] engine=$DENSE_ENGINE"
 
 if [[ "$DENSE_ENGINE" == "colmap" ]]; then
