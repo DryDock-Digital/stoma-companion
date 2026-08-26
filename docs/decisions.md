@@ -3,6 +3,30 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D18 — 2026-08-26 · GPU worker live (RTX 6000 Ada): OpenMVS-CUDA dense, neck-based base, card-anchored axis
+The client's GPU host (134.122.35.141, RTX 6000 Ada 48 GB) now runs the reconstruction
+worker (`WORKER_HOST`, CUDA image); the CPU worker on the API droplet is stopped and kept
+as fallback. Findings from the same 30 s video run repeatedly:
+**Engine.** COLMAP's own CUDA patch-match is ~24 s/frame on this GPU (two passes, 20 source
+views) — 1400–2100 s for 87 frames, unusable. OpenMVS *with CUDA* (the COLMAP base image has
+the runtime but no nvcc; the GPU Dockerfile now installs `cuda-nvcc`/`cudart-dev`/
+`driver-dev`/`libcurand-dev` and builds OpenMVS for sm_89) densifies in **26 s**.
+`DENSE_ENGINE` defaults to openmvs; patch-match stays selectable.
+**Where the time goes now** (full resolution, 87 frames, 159 s upload→measured): mapper
+64 s (CPU), mesh 49 s (CPU), densify 26 s (GPU), undistort 4 s, SIFT 3 s, match 1 s;
+keyframes 3.4 s (single ffmpeg pass on the worker), download 2 s, measure 3 s. The path to
+≤ 60 s is fewer frames (mapper and mesh scale with them) and densify resolution — decided
+by the sweep against caliper truths, not guessed (the reduced-resolution CPU run moved the
+narrowest reading by 0.9 mm).
+**Measurement fixes found on real meshes.** (1) The base is the **neck** — the narrowest
+section within 5 mm above the skin junction, what calipers close on — not "junction + 1 mm":
+two reconstructions disagreed by 1.3 mm on the skin fillet and agree within 0.1 mm at the
+neck. (2) The stoma axis is the plausible section cluster (radius 4–40 mm) **nearest the
+card**, not the largest: the more complete CUDA mesh included a table edge 100 mm away and
+the largest-cluster rule measured it (44 mm). With both: three full-res GPU runs read
+32.94–32.99 / 30.30–30.46 mm. Caliper truth for this model is still pending.
+Every run now records its engine settings and per-step seconds in `diagnostics`.
+
 ## D17 — 2026-08-26 · First real video: the printed cards are bit-inverted ArUco; real-mesh robustness
 Aaron's first real capture (27 mm card, stoma model) went through the whole system and
 surfaced what synthetic tests cannot. **The cards the legacy Mac app prints are not
