@@ -332,3 +332,57 @@ async def admin_report_csv(run_store: RunStore = Depends(get_run_store)) -> Plai
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="verification-runs.csv"'},
     )
+
+
+def _delete_job_everything(job: Job, store: JobStore, run_store: RunStore) -> dict:
+    """Job row + its verification-log row + every stored object under <job_id>/."""
+    keys: list[str] = []
+    for prefix in (f"{job.id}/", paths.keyframes_prefix(job.id)):
+        try:
+            keys.extend(store.list_objects(prefix))
+        except Exception:  # noqa: BLE001
+            pass
+    for key in (job.video_path, job.mesh_path, job.poses_path, job.gcode_path):
+        if key:
+            keys.append(key)
+    keys = sorted(set(keys))
+    removed = store.delete_objects(keys) if keys else 0
+    run = run_store.find_by_job(job.id)
+    if run is not None and run.id:
+        run_store.delete(run.id)
+    store.delete_job(job.id)
+    return {"id": job.id, "objects_deleted": removed, "run_deleted": run is not None}
+
+
+@router.delete("/scans/{job_id}")
+async def admin_delete_scan(
+    job_id: str,
+    store: JobStore = Depends(get_store),
+    run_store: RunStore = Depends(get_run_store),
+) -> dict:
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(404, "Scan not found.")
+    return _delete_job_everything(job, store, run_store)
+
+
+@router.delete("/scans")
+async def admin_clear_scans(
+    confirm: str = "",
+    store: JobStore = Depends(get_store),
+    run_store: RunStore = Depends(get_run_store),
+) -> dict:
+    """Delete EVERY run (jobs, log rows, files). Requires ?confirm=all."""
+    if confirm != "all":
+        raise HTTPException(400, "Pass ?confirm=all to clear every run.")
+    deleted = [_delete_job_everything(j, store, run_store) for j in store.list_jobs(limit=500)]
+    orphans = 0  # log rows without a job (e.g. seeded from fixtures) go too
+    for run in run_store.list():
+        if run.id:
+            run_store.delete(run.id)
+            orphans += 1
+    return {
+        "jobs_deleted": len(deleted),
+        "objects_deleted": sum(d["objects_deleted"] for d in deleted),
+        "runs_deleted": orphans,
+    }

@@ -132,6 +132,18 @@ export interface CreatedRun {
   status: JobStatus;
 }
 
+export interface DeletedRun {
+  id: string;
+  objects_deleted: number;
+  run_deleted: boolean;
+}
+
+export interface ClearedRuns {
+  jobs_deleted: number;
+  objects_deleted: number;
+  runs_deleted: number;
+}
+
 export class AdminApiError extends Error {
   constructor(
     message: string,
@@ -201,6 +213,16 @@ export function patchScan(id: string, patch: PatchRunInput): Promise<AdminScanDe
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
+}
+
+/** Deletes the job, its verification-log row and all stored files. 404 if missing. */
+export function deleteScan(id: string): Promise<DeletedRun> {
+  return request<DeletedRun>(`/admin/scans/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** Deletes EVERY run. The backend requires `confirm=all`. */
+export function clearAllScans(): Promise<ClearedRuns> {
+  return request<ClearedRuns>(`/admin/scans?confirm=all`, { method: "DELETE" });
 }
 
 /** XHR so we get upload progress (fetch has no upload progress events). */

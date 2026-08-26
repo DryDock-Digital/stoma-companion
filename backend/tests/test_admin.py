@@ -161,3 +161,34 @@ def test_min_and_max_truths_both_gate_pass():
     assert d["deviation_mm"] is None and d["within_tolerance"] is True
     csv = client.get("/admin/report.csv").text
     assert "measured_min_mm" in csv and "29.4" in csv
+
+
+def test_delete_run_removes_job_log_row_and_objects():
+    client, store, runs = _client()
+    job_id = client.post(
+        "/admin/scans", files={"video": ("m1.mov", b"v", "video/quicktime")}
+    ).json()["id"]
+    _measured(store, job_id)
+    client.patch(f"/admin/scans/{job_id}", json={"truth_mm": 33.0})
+    assert runs.list() and store.list_objects(f"{job_id}/")
+    r = client.delete(f"/admin/scans/{job_id}").json()
+    assert r["run_deleted"] is True and r["objects_deleted"] >= 14
+    assert store.get_job(job_id) is None and runs.list() == []
+    assert store.list_objects(f"{job_id}/") == []
+    assert client.get(f"/admin/scans/{job_id}").status_code == 404
+    assert client.delete(f"/admin/scans/{job_id}").status_code == 404
+
+
+def test_clear_all_requires_confirmation():
+    client, store, runs = _client()
+    for _ in range(3):
+        jid = client.post(
+            "/admin/scans", files={"video": ("m.mov", b"v", "video/quicktime")}
+        ).json()["id"]
+        _measured(store, jid)
+    assert client.delete("/admin/scans").status_code == 400
+    assert len(client.get("/admin/scans").json()["jobs"]) == 3
+    r = client.delete("/admin/scans?confirm=all").json()
+    assert r["jobs_deleted"] == 3
+    assert client.get("/admin/scans").json()["jobs"] == []
+    assert store.queue_stats()["counts"] == {}

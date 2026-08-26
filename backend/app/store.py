@@ -26,6 +26,7 @@ class JobStore(Protocol):
     def create_job(self, *, config: dict[str, Any] | None = None) -> Job: ...
     def get_job(self, job_id: str) -> Job | None: ...
     def list_jobs(self, limit: int = 50) -> list[Job]: ...
+    def delete_job(self, job_id: str) -> bool: ...
     def update_job(self, job_id: str, **fields: Any) -> Job: ...
     def patch_result(self, job_id: str, patch: dict[str, Any]) -> Job: ...
     def claim_next_job(
@@ -42,6 +43,7 @@ class JobStore(Protocol):
     def put_object(self, path: str, data: bytes, content_type: str) -> str: ...
     def get_object(self, path: str) -> bytes: ...
     def list_objects(self, prefix: str) -> list[str]: ...
+    def delete_objects(self, keys: list[str]) -> int: ...
     def signed_url(self, path: str, expires_in: int = 3600) -> str: ...
 
 
@@ -97,6 +99,10 @@ class InMemoryJobStore:
                 self._jobs.values(), key=lambda j: (j.created_at or _now(), j.id), reverse=True
             )
             return [j.model_copy(deep=True) for j in jobs[:limit]]
+
+    def delete_job(self, job_id: str) -> bool:
+        with self._lock:
+            return self._jobs.pop(job_id, None) is not None
 
     def update_job(self, job_id: str, **fields: Any) -> Job:
         with self._lock:
@@ -209,6 +215,10 @@ class InMemoryJobStore:
         with self._lock:
             return sorted(p for p in self._objects if p.startswith(prefix))
 
+    def delete_objects(self, keys: list[str]) -> int:
+        with self._lock:
+            return sum(1 for k in keys if self._objects.pop(k, None) is not None)
+
     def signed_url(self, path: str, expires_in: int = 3600) -> str:
         # No server in-memory; return a stable pseudo-URL for tests/logging.
         return f"memory://{path}?expires_in={expires_in}"
@@ -248,6 +258,10 @@ class SupabaseJobStore:
     def list_jobs(self, limit: int = 50) -> list[Job]:
         res = self._table().select("*").order("created_at", desc=True).limit(limit).execute()
         return [self._row_to_job(r) for r in (res.data or [])]
+
+    def delete_job(self, job_id: str) -> bool:
+        res = self._table().delete().eq("id", job_id).execute()
+        return bool(res.data)
 
     def update_job(self, job_id: str, **fields: Any) -> Job:
         payload = _serialize_fields(fields)
@@ -343,6 +357,14 @@ class SupabaseJobStore:
                 break
             offset += self.LIST_PAGE
         return sorted(f"{folder}/{n}" for n in names)
+
+    def delete_objects(self, keys: list[str]) -> int:
+        n = 0
+        for i in range(0, len(keys), 100):
+            chunk = keys[i : i + 100]
+            self._client.storage.from_(self._bucket).remove(chunk)
+            n += len(chunk)
+        return n
 
     def signed_url(self, path: str, expires_in: int = 3600) -> str:
         res = self._client.storage.from_(self._bucket).create_signed_url(path, expires_in)

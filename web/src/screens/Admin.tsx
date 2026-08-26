@@ -4,7 +4,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   API_BASE,
+  clearAllScans,
   createScan,
+  deleteScan,
   describeError,
   getScan,
   gcodeUrl,
@@ -129,6 +131,8 @@ function RunsList() {
   const [jobs, setJobs] = useState<AdminScanSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [clearMsg, setClearMsg] = useState<{ tone: "info" | "error"; text: string } | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -174,6 +178,29 @@ function RunsList() {
     };
   }, [jobs]);
 
+  const clearAll = async () => {
+    const typed = window.prompt("This deletes EVERY run, its verification-log row and all stored files. This cannot be undone.\n\nType DELETE to confirm.");
+    if (typed === null) return;
+    if (typed.trim() !== "DELETE") return setClearMsg({ tone: "error", text: "Not cleared: you must type DELETE exactly." });
+    setClearing(true);
+    setClearMsg(null);
+    try {
+      const r = await clearAllScans();
+      setClearMsg({ tone: "info", text: `Cleared ${r.jobs_deleted} runs · ${r.objects_deleted} stored files · ${r.runs_deleted} log rows` });
+      await load();
+    } catch (err) {
+      setClearMsg({ tone: "error", text: `Clear all failed: ${describeError(err)}` });
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!clearMsg || clearMsg.tone !== "info") return;
+    const t = setTimeout(() => setClearMsg(null), 8_000);
+    return () => clearTimeout(t);
+  }, [clearMsg]);
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
@@ -197,6 +224,7 @@ function RunsList() {
           </button>
         </Notice>
       )}
+      {clearMsg && <Notice tone={clearMsg.tone}>{clearMsg.text}</Notice>}
 
       <Panel
         title="Runs"
@@ -210,6 +238,14 @@ function RunsList() {
             <a className="rounded-md bg-accent px-2.5 py-0.5 font-semibold text-accent-ink" href={href.new}>
               + New run
             </a>
+            <button
+              className="rounded-md border border-danger/60 px-2 py-0.5 text-danger hover:bg-danger/10 disabled:opacity-40"
+              disabled={clearing || !jobs || jobs.length === 0}
+              onClick={() => void clearAll()}
+              title="Delete every run and all stored files"
+            >
+              {clearing ? "clearing…" : "Clear all runs"}
+            </button>
           </div>
         }
         className="overflow-x-auto"
@@ -465,6 +501,8 @@ function RunDetail({ id }: { id: string }) {
   const [job, setJob] = useState<AdminScanDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const stale = useRef(false);
 
   const load = useCallback(
@@ -491,7 +529,20 @@ function RunDetail({ id }: { id: string }) {
     return () => ac.abort();
   }, [load]);
 
-  const running = job ? !isTerminal(job.status) : !notFound;
+  const remove = async () => {
+    if (!window.confirm("Delete this run and all its files? This cannot be undone.")) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteScan(id);
+      window.location.hash = href.list;
+    } catch (err) {
+      setDeleteError(describeError(err));
+      setDeleting(false);
+    }
+  };
+
+  const running = job ? !isTerminal(job.status) : !notFound && !deleting;
   useEffect(() => {
     if (!running) return;
     const t = setInterval(() => void load(), DETAIL_POLL_MS);
@@ -537,6 +588,7 @@ function RunDetail({ id }: { id: string }) {
   return (
     <div className="space-y-4">
       {error && <Notice tone="warn">Last refresh failed: {error} (showing previous data)</Notice>}
+      {deleteError && <Notice tone="error">Delete failed: {deleteError}</Notice>}
 
       {/* header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -564,6 +616,14 @@ function RunDetail({ id }: { id: string }) {
               print 1:1 outline
             </a>
           )}
+          <button
+            className="rounded-md border border-danger/60 px-2.5 py-1 text-danger hover:bg-danger/10 disabled:opacity-40"
+            disabled={deleting}
+            onClick={() => void remove()}
+            title="Delete this run, its log row and all stored files"
+          >
+            {deleting ? "deleting…" : "Delete run"}
+          </button>
         </div>
       </div>
 
