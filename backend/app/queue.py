@@ -29,14 +29,16 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from . import paths
 from .cycle_time import StageTimer
 from .errors import failure_fields
-from .measure.orientation import PinholeCamera
 from .models import Job, JobStatus
 from .store import JobStore
+
+if TYPE_CHECKING:  # numpy lives in the `measure` extra; the lean API image lacks it
+    from .measure.orientation import PinholeCamera
 
 log = logging.getLogger(__name__)
 

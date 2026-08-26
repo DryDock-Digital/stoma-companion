@@ -18,7 +18,7 @@ getenv() { grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- || true; }
 
 HOST="$(getenv DROPLET_HOST)"
 USER="$(getenv DROPLET_USER)"; USER="${USER:-root}"
-SSH_KEY="$(getenv DROPLET_SSH_KEY)"; SSH_KEY="${SSH_KEY:-$HOME/.ssh/stoma_droplet}"
+SSH_KEY="$(getenv DROPLET_SSH_KEY)"; SSH_KEY="${SSH_KEY:-$HOME/.ssh/stoma_droplet}"; SSH_KEY="${SSH_KEY/#\~/$HOME}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/stoma}"
 DOCKERFILE="${WORKER_DOCKERFILE:-Dockerfile.cpu}"
 IMAGE="stoma-worker"
