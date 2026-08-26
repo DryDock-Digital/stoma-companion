@@ -12,7 +12,7 @@ import io
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..measure import slicing
+from ..measure import slice_height, slicing
 from .fixtures import Fixture
 
 DEFAULT_TOLERANCE_MM = 1.0  # FR-09 dimensional tolerance
@@ -31,52 +31,75 @@ class MeasurementMethod(Protocol):
     def measure(self, fixture: Fixture) -> MeasuredResult: ...
 
 
-# --- baseline method (manual slice, P1-7 maths) ----------------------------
+# --- diameter methods ------------------------------------------------------
+
+
+def _normal_from_params(p: dict):
+    """Slice up-axis from fixture params (manual tilt or a fixed axis)."""
+    if "tilt" in p:
+        t = p["tilt"]
+        return slicing.plane_normal_from_manual_tilt(
+            t.get("base_axis", "positiveY"),
+            float(t.get("tilt_x", 0.0)),
+            float(t.get("tilt_y", 0.0)),
+            float(t.get("tilt_z", 0.0)),
+        )
+    return slicing.FIXED_AXES[p.get("up_axis", "positiveZ")]
+
+
+def _diameter(
+    fixture: Fixture, vertices, faces, normal, fraction, spin, extra_meta
+) -> MeasuredResult:
+    result = slicing.extract_perimeter(vertices, faces, normal, fraction, spin_degrees=spin)
+    diameter_scene = slicing.max_planar_chord_length(result.samples)
+    return MeasuredResult(
+        value_mm=diameter_scene * fixture.scale_mm_per_unit,
+        metric="diameter",
+        meta={
+            "diameter_scene": diameter_scene,
+            "scale_mm_per_unit": fixture.scale_mm_per_unit,
+            "loop_vertices": result.loop_vertex_count,
+            "slice_offset_fraction": fraction,
+            **extra_meta,
+        },
+    )
 
 
 class BaselineDiameterMethod:
-    """Diameter via the ported manual-slice pipeline (P1-7). Reads slice params
-    from the fixture (up axis / tilt, offset fraction, spin); defaults to a +Z
-    mid-slice. Diameter = longest planar chord × scale (scene units → mm)."""
+    """Diameter via the ported manual-slice pipeline (P1-7). Reads slice params from
+    the fixture (up axis / tilt, offset fraction, spin); defaults to a +Z mid-slice.
+    Diameter = longest planar chord × scale (scene units → mm)."""
 
     name = "baseline-manual-slice"
 
     def measure(self, fixture: Fixture) -> MeasuredResult:
         vertices, faces = fixture.load_mesh()
         p = fixture.params
-
-        if "tilt" in p:
-            t = p["tilt"]
-            normal = slicing.plane_normal_from_manual_tilt(
-                t.get("base_axis", "positiveY"),
-                float(t.get("tilt_x", 0.0)),
-                float(t.get("tilt_y", 0.0)),
-                float(t.get("tilt_z", 0.0)),
-            )
-        else:
-            up_axis = p.get("up_axis", "positiveZ")
-            normal = slicing.FIXED_AXES[up_axis]
-
+        normal = _normal_from_params(p)
         offset = float(p.get("slice_offset_fraction", 0.5))
         spin = float(p.get("spin_degrees", 0.0))
+        return _diameter(fixture, vertices, faces, normal, offset, spin, {})
 
-        result = slicing.extract_perimeter(vertices, faces, normal, offset, spin_degrees=spin)
-        diameter_scene = slicing.max_planar_chord_length(result.samples)
-        value_mm = diameter_scene * fixture.scale_mm_per_unit
-        return MeasuredResult(
-            value_mm=value_mm,
-            metric="diameter",
-            meta={
-                "diameter_scene": diameter_scene,
-                "scale_mm_per_unit": fixture.scale_mm_per_unit,
-                "loop_vertices": result.loop_vertex_count,
-                "slice_offset_fraction": offset,
-            },
-        )
+
+class AutoHeightDiameterMethod:
+    """Diameter at the *automatically* detected base height (P2-4): the skin→stoma
+    junction from the area profile, no manual offset. Orientation still comes from
+    params here; in the full pipeline it comes from P2-2/P2-3."""
+
+    name = "auto-height"
+
+    def measure(self, fixture: Fixture) -> MeasuredResult:
+        vertices, faces = fixture.load_mesh()
+        p = fixture.params
+        normal = _normal_from_params(p)
+        spin = float(p.get("spin_degrees", 0.0))
+        fraction = slice_height.auto_slice_fraction(vertices, faces, normal)
+        return _diameter(fixture, vertices, faces, normal, fraction, spin, {"auto_height": True})
 
 
 METHODS: dict[str, MeasurementMethod] = {
     "baseline": BaselineDiameterMethod(),
+    "auto-height": AutoHeightDiameterMethod(),
 }
 
 

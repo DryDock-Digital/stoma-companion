@@ -34,6 +34,40 @@ def plane_basis(normal: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return u, v
 
 
+def skin_point_cloud(
+    normal,
+    center=(0.0, 0.0, 0.0),
+    *,
+    radius: float = 45.0,
+    n_points: int = 1500,
+    noise: float = 0.2,
+    stoma_radius: float = 10.0,
+    stoma_bump: float = 6.0,
+    outlier_frac: float = 0.03,
+    outlier_scale: float = 10.0,
+    seed: int = 0,
+) -> np.ndarray:
+    """A peristomal-skin patch: a disk in the plane (`normal`) with Gaussian
+    measurement noise, a central raised stoma (non-planar → outliers to the skin
+    plane), and a few gross reconstruction outliers. Same known normal as the
+    marker scene, so RANSAC/PCA are scored on the same board as the ArUco plane."""
+    rng = np.random.default_rng(seed)
+    n = _normalize(np.asarray(normal, dtype=float))
+    center = np.asarray(center, dtype=float)
+    u, v = plane_basis(n)
+
+    rho = radius * np.sqrt(rng.random(n_points))
+    theta = 2 * math.pi * rng.random(n_points)
+    inplane = rho[:, None] * (np.cos(theta)[:, None] * u + np.sin(theta)[:, None] * v)
+
+    z = noise * rng.standard_normal(n_points)
+    z += (rho < stoma_radius) * stoma_bump  # central stoma rises off the skin plane
+    outliers = rng.random(n_points) < outlier_frac
+    z += outliers * rng.standard_normal(n_points) * outlier_scale
+
+    return center + inplane + z[:, None] * n
+
+
 def marker_corners_3d(center, u, v, side: float) -> np.ndarray:
     """(4,3) corners TL, TR, BR, BL for canonical-image order."""
     center = np.asarray(center, dtype=float)
@@ -107,6 +141,7 @@ class SyntheticScene:
     marker_id: int
     image_size: tuple[int, int]
     marker_img: np.ndarray
+    skin_points: np.ndarray | None = None  # for marker-independent methods (P2-3)
 
     def render_views(self) -> list[np.ndarray]:
         return [
@@ -127,13 +162,17 @@ def build_scene(
     elevation_deg: float = 60.0,
     image_size: tuple[int, int] = (800, 800),
     fov_deg: float = 55.0,
+    with_skin: bool = False,
+    skin_kwargs: dict | None = None,
 ) -> SyntheticScene:
     """A detectable synthetic scene with a known plane normal. Auto-flips the
     marker's in-plane handedness if the first render doesn't decode (so a marker
-    facing the cameras is never accidentally mirrored)."""
+    facing the cameras is never accidentally mirrored). With `with_skin`, also
+    attaches a skin point cloud sharing the same normal (for RANSAC/PCA, P2-3)."""
     normal = _normalize(np.asarray(normal, dtype=float))
     center = np.asarray(center, dtype=float)
     u, v = plane_basis(normal)
+    skin_points = skin_point_cloud(normal, center, **(skin_kwargs or {})) if with_skin else None
     dictionary = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, ARUCO_DICT))
     marker_img = cv2.aruco.generateImageMarker(dictionary, marker_id, MARKER_PX)
     cameras = orbit_cameras(
@@ -163,5 +202,6 @@ def build_scene(
                 marker_id=marker_id,
                 image_size=image_size,
                 marker_img=marker_img,
+                skin_points=skin_points,
             )
     raise RuntimeError(f"scene '{name}': marker not detectable in the probe view")

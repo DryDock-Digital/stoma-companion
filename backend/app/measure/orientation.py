@@ -149,3 +149,74 @@ def angle_between_axes_deg(a: np.ndarray, b: np.ndarray) -> float:
     plane is identical for n and −n."""
     a, b = _normalize(np.asarray(a, dtype=float)), _normalize(np.asarray(b, dtype=float))
     return math.degrees(math.acos(min(1.0, abs(float(a @ b)))))
+
+
+def _orient(normal: np.ndarray, toward: np.ndarray | None, centroid: np.ndarray) -> np.ndarray:
+    if toward is None:
+        return normal
+    if float(normal @ (np.asarray(toward, dtype=float) - centroid)) < 0:
+        return -normal
+    return normal
+
+
+# --- marker-independent fallbacks (P2-3) -----------------------------------
+
+
+def pca_plane_normal(points: np.ndarray, orient_toward: np.ndarray | None = None) -> np.ndarray:
+    """Least-squares (PCA) plane normal over *all* points — simple but biased by
+    non-planar features (a stoma bump) and outliers. The non-robust fallback."""
+    normal, centroid, _ = fit_plane_normal(points)
+    return _orient(normal, orient_toward, centroid)
+
+
+@dataclass
+class RansacPlane:
+    normal: np.ndarray
+    centroid: np.ndarray
+    inlier_mask: np.ndarray
+    inlier_fraction: float
+
+
+def ransac_plane_normal(
+    points: np.ndarray,
+    *,
+    threshold: float,
+    iterations: int = 300,
+    seed: int = 0,
+    orient_toward: np.ndarray | None = None,
+) -> RansacPlane:
+    """Robust plane fit: the peristomal skin is planar, but the stoma bump and
+    reconstruction outliers are not. Sample 3 points, score inliers within
+    `threshold`, keep the best consensus, then refit on its inliers. Deterministic
+    for a given `seed`."""
+    pts = np.asarray(points, dtype=float)
+    n = len(pts)
+    if n < 3:
+        raise ValueError("need >= 3 points for RANSAC")
+    rng = np.random.default_rng(seed)
+
+    best_mask = None
+    best_count = 0
+    for _ in range(iterations):
+        idx = rng.choice(n, size=3, replace=False)
+        a, b, c = pts[idx]
+        normal = np.cross(b - a, c - a)
+        norm = np.linalg.norm(normal)
+        if norm < 1e-9:
+            continue
+        normal = normal / norm
+        dist = np.abs((pts - a) @ normal)
+        mask = dist < threshold
+        count = int(mask.sum())
+        if count > best_count:
+            best_count, best_mask = count, mask
+
+    if best_mask is None or best_count < 3:
+        # no consensus — fall back to plain PCA over everything
+        normal, centroid, _ = fit_plane_normal(pts)
+        normal = _orient(normal, orient_toward, centroid)
+        return RansacPlane(normal, centroid, np.ones(n, bool), 1.0)
+
+    normal, centroid, _ = fit_plane_normal(pts[best_mask])
+    normal = _orient(normal, orient_toward, centroid)
+    return RansacPlane(normal, centroid, best_mask, best_count / n)

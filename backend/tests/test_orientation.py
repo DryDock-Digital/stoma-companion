@@ -1,6 +1,6 @@
-"""P2-2 marker-plane orientation. Pure-geometry tests (camera/triangulate/plane
-fit) run always; the detection + synthetic-render path runs when OpenCV is present.
-Scored against known ground-truth normals — no physical capture."""
+"""P2-2/P2-3 orientation. Pure-geometry tests (camera/triangulate/plane fit/PCA/
+RANSAC) run always; the detection + synthetic-render path runs when OpenCV is
+present. Everything is scored against known ground-truth normals — no capture."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def _normalize(v):
     return np.asarray(v, float) / np.linalg.norm(v)
 
 
-# --- pure geometry ---------------------------------------------------------
+# --- pure geometry (P2-2) --------------------------------------------------
 
 
 def test_project_center_lands_at_principal_point():
@@ -34,8 +34,7 @@ def test_triangulate_recovers_known_point():
         ori.PinholeCamera.look_at((0, 100, 70), (0, 0, 0), image_size=(800, 800)),
     ]
     obs = [cam.project(p) for cam in cams]
-    out = ori.triangulate(cams, obs)
-    assert out[0] == pytest.approx(p[0], abs=1e-6)
+    assert ori.triangulate(cams, obs)[0] == pytest.approx(p[0], abs=1e-6)
 
 
 def test_fit_plane_normal_of_z0_plane():
@@ -53,12 +52,11 @@ def test_angle_between_axes_is_sign_invariant():
 
 
 def test_recover_plane_from_ground_truth_projections():
-    # a tilted marker plane, 4 coplanar corners, projected exactly (no detection)
     normal = _normalize([math.sin(math.radians(25)), 0, math.cos(math.radians(25))])
     u = _normalize(np.cross([0, 1, 0], normal))
     v = np.cross(normal, u)
     c = np.array([2.0, 1.0, 0.0])
-    corners = np.array([c - u - v, c + u - v, c + u + v, c - u + v]) * 1.0
+    corners = np.array([c - u - v, c + u - v, c + u + v, c - u + v])
     cams = [
         ori.PinholeCamera.look_at(c + normal * 100 + u * 30, c, image_size=(800, 800)),
         ori.PinholeCamera.look_at(c + normal * 100 - u * 30, c, image_size=(800, 800)),
@@ -67,8 +65,42 @@ def test_recover_plane_from_ground_truth_projections():
     obs = [cam.project(corners) for cam in cams]
     plane = ori.recover_marker_plane(cams, obs)
     assert ori.angle_between_axes_deg(plane.normal, normal) < 1e-4
-    # normal oriented toward the cameras (positive component along true up)
     assert float(plane.normal @ normal) > 0
+
+
+# --- PCA / RANSAC plane fits (P2-3) ----------------------------------------
+
+
+def _planar_cloud(n=1000, noise=0.1, seed=0):
+    rng = np.random.default_rng(seed)
+    xy = rng.uniform(-20, 20, (n, 2))
+    z = noise * rng.standard_normal(n)
+    return np.column_stack([xy, z])
+
+
+def test_pca_normal_of_clean_plane():
+    normal = ori.pca_plane_normal(_planar_cloud(), orient_toward=np.array([0, 0, 100]))
+    assert ori.angle_between_axes_deg(normal, [0, 0, 1]) < 0.5
+    assert normal[2] > 0  # oriented toward the hint
+
+
+def test_ransac_rejects_outliers_and_beats_pca():
+    # a flat plane plus a one-sided raised outlier cluster (reconstruction junk)
+    rng = np.random.default_rng(1)
+    plane = _planar_cloud(1000, noise=0.1, seed=2)
+    k = 150
+    cluster = np.column_stack(
+        [rng.uniform(14, 20, k), rng.uniform(-20, 20, k), rng.uniform(5, 10, k)]
+    )
+    pts = np.vstack([plane, cluster])
+
+    pca_err = ori.angle_between_axes_deg(ori.pca_plane_normal(pts), [0, 0, 1])
+    res = ori.ransac_plane_normal(pts, threshold=0.5, seed=0)
+    ransac_err = ori.angle_between_axes_deg(res.normal, [0, 0, 1])
+
+    assert pca_err > 2.0  # least-squares is dragged by the cluster
+    assert ransac_err < 0.5  # robust fit ignores it
+    assert res.inlier_fraction < 0.95  # the cluster was excluded
 
 
 # --- detection + synthetic render (needs OpenCV) ---------------------------
@@ -76,24 +108,30 @@ def test_recover_plane_from_ground_truth_projections():
 cv2 = pytest.importorskip("cv2")
 
 from app.verify import synthetic  # noqa: E402
-from app.verify.orientation import default_suite, score_scene, score_suite  # noqa: E402
+from app.verify.orientation import (  # noqa: E402
+    ORIENTATION_METHODS,
+    compare,
+    default_suite,
+    recommended_chain,
+    score_scene,
+)
 
 
-def test_scene_recovers_tilted_normal_via_detection():
+def test_aruco_method_recovers_tilted_normal():
     normal = _normalize([math.sin(math.radians(20)), 0, math.cos(math.radians(20))])
-    scene = synthetic.build_scene("tilt20", normal)
-    run = score_scene(scene, tolerance_deg=2.0)
-    assert run.error is None
-    assert run.views_detected >= 8
-    assert run.error_deg < 0.5  # synthetic recovery is sub-degree
-    assert run.passed
+    scene = synthetic.build_scene("tilt20", normal, with_skin=True)
+    run = score_scene(scene, ORIENTATION_METHODS["aruco"], tolerance_deg=2.0)
+    assert run.error is None and run.error_deg < 0.5 and run.passed
 
 
-def test_default_suite_all_within_tolerance():
-    board = score_suite(default_suite(), tolerance_deg=2.0)
-    assert board.all_passed
-    s = board.summary()
-    assert s["scenes"] == 6
-    assert s["max_error_deg"] < 1.0
-    csv = board.to_csv()
-    assert csv.splitlines()[0].startswith("scene,views_detected,error_deg")
+def test_all_methods_score_and_chain_prefers_aruco():
+    boards = compare(default_suite(), tolerance_deg=2.0)
+    assert set(boards) == {"aruco", "ransac", "pca"}
+    # marker + robust skin fit both nail it across the suite
+    assert boards["aruco"].all_passed
+    assert boards["ransac"].all_passed
+    # primary is the marker; skin fits are fallbacks
+    chain = recommended_chain(boards)
+    assert chain[0] == "aruco"
+    assert chain[-1] == "pca"
+    assert boards["aruco"].summary()["max_error_deg"] < 1.0

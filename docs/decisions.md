@@ -3,6 +3,23 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D11 — 2026-08-26 · P2-3/P2-4: orientation fallback chain = ArUco → RANSAC → PCA; auto slice-height by area-profile junction
+**P2-3 orientation fallbacks.** Added marker-free plane fits on the peristomal-skin
+point cloud: RANSAC (robust to the stoma bump + reconstruction outliers) and PCA
+(least-squares, biased). All three methods are scored on one synthetic board
+(`stoma-score-orientation`); on clean synthetic data they're all sub-0.3°, so the
+recommended **chain is by reliability preference, not raw error**: ArUco is primary
+(the designed reference, when the marker is visible), RANSAC first fallback, PCA last.
+A robustness test confirms RANSAC ≪ PCA under a one-sided outlier cluster.
+**P2-4 automatic slice height.** The stoma rises out of the skin, so the
+cross-section-area profile along the oriented axis has a broad skin region that drops
+at the skin junction (FR-05). `auto_slice_fraction` finds that drop and slices just
+above it; exposed as the `auto-height` method on the P2-1 diameter board. Demonstrated
+on a synthetic stoma-on-thick-skin mesh where a fixed mid-slice lands in the skin
+(~80 mm, fails) but auto-height recovers the 33 mm base. Junction-rule + orientation
+sign tuning against real geometry deferred (P0-3); orientation still comes from params
+here and will come from P2-2/P2-3 in the wired pipeline.
+
 ## D10 — 2026-08-26 · P2-2 marker-plane orientation validated on synthetic scenes; real-footage deferred
 "Up" (FR-04) is recovered by triangulating the ArUco marker's corners across
 multiple views (known camera poses) and fitting their plane — normal oriented toward

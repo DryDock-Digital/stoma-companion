@@ -18,32 +18,36 @@ app/
   pipeline.py    post-upload stage: pending → extracting → keyframes_ready
   queue.py       reconstruction contract + reference poller (P1-3)
   routes/scans.py  POST /scans, GET /scans/{id}
-  measure/       ported measurement maths (P1-6…P1-8):
+  measure/       ported measurement maths + P2 algorithms:
     aruco.py       ArUco detection + scale derivation (P1-6)
     slicing.py     mesh slice → perimeter loop → arc-length samples (P1-7)
     metrics.py     feret/radial/perimeter/area/diameter (P1-7)
     outline.py     Ideal-Fit grace-ring offset, FR-07 (P1-8)
     gcode.py       perimeter G-code + polar path plan (P1-8)
-  verify/        verification harnesses (P2-1, P2-2):
+    orientation.py pinhole camera + triangulation + plane fit; PCA/RANSAC (P2-2/P2-3)
+    slice_height.py  area profile → auto base-slice height, FR-05 (P2-4)
+  verify/        verification harnesses (P2-1…P2-4):
     fixtures.py    discover/load fixtures (mesh + truth + scale + params)
-    harness.py     diameter board: MeasurementMethod → Scoreboard (deviation vs ±1 mm)
+    harness.py     diameter board: methods baseline + auto-height → Scoreboard (±1 mm)
     __main__.py    the `stoma-score` CLI
-    synthetic.py   synthetic ArUco scenes (rendered views at known poses) — P2-2
-    orientation.py orientation board: recovered "up" vs known normal; `stoma-score-orientation`
-  measure/orientation.py   pinhole camera + triangulation + plane fit (P2-2)
+    synthetic.py   synthetic ArUco scenes + skin point clouds at known poses (P2-2/P2-3)
+    orientation.py orientation board: compare aruco/ransac/pca vs known normal
 tests/           pytest; no Supabase, no GPU, ffmpeg only for extractor integration
 ```
 
 ## Scoreboards
 
 ```bash
-stoma-score                    # P2-1: diameter vs caliper truth, ±1 mm, over fixtures/
-stoma-score-orientation        # P2-2: marker-plane "up" recovery vs known truth (synthetic)
+stoma-score --method auto-height   # P2-1/P2-4: diameter vs caliper truth, ±1 mm, over fixtures/
+stoma-score-orientation            # P2-2/P2-3: compare aruco/ransac/pca "up" recovery (synthetic)
 ```
 
 Both print per-item deviation + pass/fail + aggregates and exit non-zero on any
-miss. Each P2 algorithm ticket reports on one of these boards; they grow into the P5
-test-log module. See `fixtures/README.md` for the diameter-board input schema.
+miss. Each P2 algorithm ticket reports on one of these boards: orientation methods
+(ArUco plane, RANSAC, PCA) compare on the degrees board and yield a primary+fallback
+chain; the auto-height slice method competes with the manual baseline on the mm
+board. They grow into the P5 test-log module. See `fixtures/README.md` for the
+diameter-board input schema.
 
 The `measure/` package needs numpy/trimesh/opencv (the `measure` extra); it's kept
 out of the base install so the API image stays lean, and imported lazily. Its
