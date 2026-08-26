@@ -50,14 +50,31 @@ echo "▶ syncing env (allowlisted keys only) …"
 grep -E "$ENV_ALLOWLIST" "$ENV_FILE" \
   | remote "umask 077 && cat > $REMOTE_DIR/.env.worker && echo \"  env synced (\$(grep -c . $REMOTE_DIR/.env.worker) keys)\""
 
-echo "▶ building image (OpenMVS compiles from source — first build takes a while) …"
-remote "cd $REMOTE_DIR && docker build -f worker-colmap/$DOCKERFILE -t $IMAGE . >/tmp/stoma-worker-build.log 2>&1 \
-  && echo '  build ok' || { echo '  BUILD FAILED:'; tail -40 /tmp/stoma-worker-build.log; exit 1; }"
+# The build + container swap run as one script on the host. With DETACHED_BUILD=1 it
+# is launched under nohup and this command returns immediately (a first CUDA build
+# compiles OpenMVS for 20–40 min — longer than an SSH session should be relied on);
+# follow it with:  ssh $USER@$HOST tail -f $REMOTE_DIR/worker-build.log
+remote "cat > $REMOTE_DIR/build-worker.sh <<'EOS'
+#!/bin/bash
+set -e
+cd $REMOTE_DIR
+docker build -f worker-colmap/$DOCKERFILE -t $IMAGE . && echo BUILD_OK || { echo BUILD_FAILED; exit 1; }
+docker rm -f $CONTAINER >/dev/null 2>&1 || true
+docker run -d --name $CONTAINER --restart unless-stopped $GPU_FLAG --env-file $REMOTE_DIR/.env.worker $IMAGE
+echo DEPLOY_OK
+EOS
+chmod +x $REMOTE_DIR/build-worker.sh"
 
-echo "▶ restarting container …"
-remote "docker rm -f $CONTAINER >/dev/null 2>&1 || true; \
-  docker run -d --name $CONTAINER --restart unless-stopped $GPU_FLAG \
-    --env-file $REMOTE_DIR/.env.worker $IMAGE >/dev/null && echo '  container started'"
+if [[ "${DETACHED_BUILD:-0}" == "1" ]]; then
+  echo "▶ building + deploying detached on the host …"
+  remote "nohup $REMOTE_DIR/build-worker.sh > $REMOTE_DIR/worker-build.log 2>&1 < /dev/null & disown; echo '  launched'"
+  echo "  follow: ssh $USER@$HOST tail -f $REMOTE_DIR/worker-build.log   (ends with DEPLOY_OK)"
+  exit 0
+fi
+
+echo "▶ building image (OpenMVS compiles from source — first build takes a while) …"
+remote "$REMOTE_DIR/build-worker.sh > $REMOTE_DIR/worker-build.log 2>&1 \
+  && echo '  build + swap ok' || { echo '  BUILD FAILED:'; tail -40 $REMOTE_DIR/worker-build.log; exit 1; }"
 
 echo "▶ worker log (first lines) …"
 sleep 3
