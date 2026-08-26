@@ -3,6 +3,31 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D17 — 2026-08-26 · First real video: the printed cards are bit-inverted ArUco; real-mesh robustness
+Aaron's first real capture (27 mm card, stoma model) went through the whole system and
+surfaced what synthetic tests cannot. **The cards the legacy Mac app prints are not
+standard ArUco**: `ArUcoMarkerGenerator.swift` writes OpenCV's DICT_4X4_50 bit tables
+as "dark = 1" while OpenCV renders bit 1 white, so every printed card is the inner-bit
+complement of the standard marker (0/88 frames decoded with DICT_4X4_50, 37/88 with the
+inverted table). This is now the named dictionary **`LEGACY_4X4_50`** and the default
+(`ARUCO_DICT`); standard OpenCV names remain selectable if cards are ever reprinted.
+The mesh side needed the same dose of reality: OpenMVS output (650k vertices, holes at
+the skin junction, T-junctions) broke the ported slicer's closed-loop tracing and its
+metre-scaled snap tolerance, and a full SVD on 220k skin points tried to allocate
+~380 GB. Measurement now: numpy prefilter of straddling faces, mm snap floor, closable
+chains, **stoma axis** from the mid-height section cluster, a topology-free **polar
+section outline** for the Ø-vs-height profile (reported in `diagnostics`), base = skin
+junction + `slice_margin_mm`, and the traced loop only when it agrees with the polar Ø
+within 10%. Operationally: TextureMesh dropped (19 of 60 CPU minutes, output unused),
+`ReconstructMesh --decimate`, mesh stored gzip'd (Supabase caps objects at 50 MB; the
+raw OBJ was 162 MB), large uploads over HTTP/1.1 (the HTTP/2 client crawled at 40 KB/s),
+workers heartbeat their claim (the watchdog had failed a live 45-min reconstruction),
+`attempts` per stage, and `pending` is claimable only once the video is stored.
+Result on the first video: base **32.98 mm** at 1.7 mm above the skin, 36 posed views of
+the card at 1.4 px reprojection, scale CV 1%, skin plane 4.6° off the card. Caliper
+truth and the FR-10 reference point are still to come from Aaron/Cole — the profile
+(33.0 mm at 2 mm → 34.6 mm at 8 mm) shows why the reference point must be pinned down.
+
 ## D16 — 2026-08-26 · Review fixes before P4: correct wafer G-code, true polygon offset, widened engine contract, hardened queue
 A code review of everything built so far (measurement maths, plumbing, web app)
 found two outright bugs in the last mile — the G-code was ×1000 too large (mm mesh
