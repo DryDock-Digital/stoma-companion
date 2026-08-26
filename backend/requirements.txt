@@ -1,0 +1,16 @@
+# Pinned versions for the Docker images (pip install -c requirements.txt).
+# pyproject.toml keeps the loose ranges for development; these are the versions the
+# 2026-08-26 review was run against. Bump deliberately, run the full suite.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.4
+pydantic-settings==2.15.0
+python-multipart==0.0.32
+supabase==2.31.0
+# measure extra
+numpy==2.2.6            # last series with Python 3.11 wheels (images run 3.11/3.12)
+trimesh==5.0.0
+opencv-python-headless==5.0.0.93
+shapely==2.1.2
+# reports extra
+fpdf2==2.8.8

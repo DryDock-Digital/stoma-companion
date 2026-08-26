@@ -1,10 +1,19 @@
 """Mesh slice → base perimeter → arc-length samples (P1-7).
 
-Direct port of legacy CompanionMac/BasePerimeterExtractor.swift, restricted to the
-deterministic path: the slice plane is supplied via *manual* parameters (up axis or
-tilt + spin + slice-offset fraction). Automatic floor/orientation detection is P2
-(P2-2…P2-4) and is intentionally not ported here — per the P1-7 ticket, "manual
-slice params accepted as input at this stage."
+Direct port of legacy CompanionMac/BasePerimeterExtractor.swift (the deterministic
+slice → loop → resample path), plus what real reconstructions need on top:
+
+  - `crop_mesh` — restrict the mesh to a region of interest around the marker before
+    slicing. OpenMVS meshes include skin, table and background; without the crop the
+    height extrema (and therefore every "fraction" height) are dominated by junk, and
+    a slice near the skin traces the *skin* loop (longer than the stoma's) instead of
+    the stoma. Cropping also turns the skin section into an *open* curve — only the
+    stoma remains a closed loop — which is what makes "largest closed loop" correct.
+  - `plane_h` — an absolute slice height along the normal (mm above the marker/skin
+    plane), so callers don't have to express heights as fractions of a junk span.
+  - the diameter is the max chord over the **raw loop vertices** (exact), not over the
+    100 arc-length samples (which systematically under-reads by ~0.1–0.3 mm).
+    `max_planar_chord_length` still accepts samples for legacy parity.
 
 Pipeline (matches the Swift `extract`):
   1. slice frame: normal n, in-plane basis (axisU, axisV), height bounds floor/max
@@ -85,6 +94,39 @@ def plane_normal_from_manual_tilt(
     base = _normalize(np.asarray(FIXED_AXES[base_axis], dtype=float))
     m = _rot_z(tilt_z) @ _rot_y(tilt_y) @ _rot_x(tilt_x)
     return _normalize(m @ base)
+
+
+def crop_mesh(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    center: np.ndarray,
+    normal: np.ndarray,
+    *,
+    radius: float,
+    below: float,
+    above: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Keep faces with at least one vertex inside a cylinder of `radius` around the
+    axis through `center` along `normal`, between heights `-below` and `+above`
+    relative to `center` (straddling faces are kept so the crop boundary doesn't
+    open holes in the surface). Returns (vertices, faces, inside_mask) with faces
+    re-indexed; `inside_mask` flags the returned vertices that are strictly inside
+    the region (use it for height extrema). Raises LoopError if nothing survives."""
+    v = np.asarray(vertices, dtype=float)
+    f = np.asarray(faces, dtype=int)
+    n = _normalize(np.asarray(normal, dtype=float))
+    c = np.asarray(center, dtype=float)
+    rel = v - c
+    h = rel @ n
+    radial = np.linalg.norm(rel - np.outer(h, n), axis=1)
+    inside = (radial <= radius) & (h >= -below) & (h <= above)
+    keep_f = inside[f].any(axis=1)
+    if not keep_f.any():
+        raise LoopError("Region of interest around the marker contains no mesh.")
+    used = np.unique(f[keep_f])
+    remap = -np.ones(len(v), dtype=int)
+    remap[used] = np.arange(len(used))
+    return v[used], remap[f[keep_f]], inside[used]
 
 
 def height_extrema(vertices: np.ndarray, normal: np.ndarray) -> tuple[float, float]:
@@ -280,7 +322,10 @@ def point_in_polygon_2d(p: np.ndarray, poly: np.ndarray) -> bool:
     for i in range(n):
         pi, pj = poly[i], poly[j]
         if (pi[1] > p[1]) != (pj[1] > p[1]):
-            x_int = (pj[0] - pi[0]) * (p[1] - pi[1]) / max(pj[1] - pi[1], 1e-12) + pi[0]
+            # the condition guarantees pi.y != pj.y, so the division is safe; clamping
+            # a *negative* denominator here (an earlier port bug) broke the test for
+            # every downward edge and shifted the polar origin off the centroid.
+            x_int = (pj[0] - pi[0]) * (p[1] - pi[1]) / (pj[1] - pi[1]) + pi[0]
             if p[0] < x_int:
                 inside = not inside
         j = i
@@ -380,23 +425,58 @@ class PerimeterResult:
     plane_constant: float
     loop_vertex_count: int
     slice_offset_fraction: float
+    loop_xy: np.ndarray | None = None  # raw traced loop (N,2), re-origined like samples
 
     def plane_xy(self) -> list[tuple[float, float]]:
         return [(s.x, s.y) for s in self.samples]
 
+    def diameter(self) -> float:
+        """Base diameter = longest chord of the raw loop (exact); falls back to the
+        samples when the loop isn't available (legacy parity results)."""
+        if self.loop_xy is not None and len(self.loop_xy) >= 2:
+            return max_planar_chord_length(self.loop_xy)
+        return max_planar_chord_length(self.samples)
 
-def max_planar_chord_length(samples: list[BasePlaneSample]) -> float:
-    """Longest distance between any two samples — the 'longest diameter' of the
-    outline (BasePerimeterExtractor.maxPlanarChordLength)."""
-    pts = np.array([[s.x, s.y] for s in samples])
+
+def max_planar_chord_length(samples) -> float:
+    """Longest distance between any two points — the 'longest diameter' of the
+    outline (BasePerimeterExtractor.maxPlanarChordLength). Accepts a list of
+    BasePlaneSample or an (N,2) array. Uses the convex hull so it's exact and fast
+    for large loops."""
+    if isinstance(samples, np.ndarray):
+        pts = np.asarray(samples, dtype=float)
+    else:
+        pts = np.array([[s.x, s.y] for s in samples], dtype=float)
     if len(pts) < 2:
         return 0.0
+    hull = _convex_hull(pts) if len(pts) > 8 else pts
     best = 0.0
-    for i in range(len(pts)):
-        d = np.linalg.norm(pts[i + 1 :] - pts[i], axis=1)
+    for i in range(len(hull)):
+        d = np.linalg.norm(hull[i + 1 :] - hull[i], axis=1)
         if d.size:
             best = max(best, float(d.max()))
     return best
+
+
+def _convex_hull(pts: np.ndarray) -> np.ndarray:
+    """Andrew's monotone chain. The farthest pair of a point set lies on its hull."""
+    order = np.lexsort((pts[:, 1], pts[:, 0]))
+    p = pts[order]
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[np.ndarray] = []
+    for q in p:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], q) <= 0:
+            lower.pop()
+        lower.append(q)
+    upper: list[np.ndarray] = []
+    for q in p[::-1]:
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], q) <= 0:
+            upper.pop()
+        upper.append(q)
+    return np.array(lower[:-1] + upper[:-1])
 
 
 def extract_perimeter(
@@ -408,10 +488,12 @@ def extract_perimeter(
     spin_degrees: float = 0.0,
     floor_h: float | None = None,
     max_h: float | None = None,
+    plane_h: float | None = None,
 ) -> PerimeterResult:
-    """Slice a mesh (vertices (V,3), faces (F,3)) at a manual plane and return the
-    resampled base perimeter. `normal` is the slice up-axis; `floor_h`/`max_h`
-    default to the vertex height extrema along `normal`."""
+    """Slice a mesh (vertices (V,3), faces (F,3)) and return the resampled base
+    perimeter. `normal` is the slice up-axis. The plane sits at
+    `floor_h + fraction·span` (legacy), or at the absolute height `plane_h` along
+    the normal when given. `floor_h`/`max_h` default to the vertex height extrema."""
     vertices = np.asarray(vertices, dtype=float)
     faces = np.asarray(faces, dtype=int)
     n = _normalize(np.asarray(normal, dtype=float))
@@ -422,8 +504,12 @@ def extract_perimeter(
         max_h = mh if max_h is None else max_h
 
     span = max(max_h - floor_h, 1e-6)
-    offset = max(0.0, min(slice_offset_fraction, 1.0))
-    plane_d = floor_h + offset * span
+    if plane_h is not None:
+        plane_d = float(plane_h)
+        offset = (plane_d - floor_h) / span
+    else:
+        offset = max(0.0, min(slice_offset_fraction, 1.0))
+        plane_d = floor_h + offset * span
     axis_u, axis_v = slice_basis(n, spin_degrees)
     eps = max(span * 1e-5, 1e-6)
 
@@ -456,4 +542,5 @@ def extract_perimeter(
         plane_constant=plane_d,
         loop_vertex_count=len(loop),
         slice_offset_fraction=offset,
+        loop_xy=shifted,
     )

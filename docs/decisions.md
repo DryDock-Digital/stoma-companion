@@ -3,6 +3,53 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D16 — 2026-08-26 · Review fixes before P4: correct wafer G-code, true polygon offset, widened engine contract, hardened queue
+A code review of everything built so far (measurement maths, plumbing, web app)
+found two outright bugs in the last mile — the G-code was ×1000 too large (mm mesh
+multiplied by the legacy metre→mm factor) and it emitted the *base* perimeter rather
+than the grace-ring wafer outline — plus a set of things that would have failed on
+the first real video. All fixed in one pass so P4 starts from correct output:
+**G-code** now works in mm end to end (`input_units` is explicit; a >150 mm coordinate
+raises), cuts the Ideal-Fit ring, and is expressed per **dialect** (`grbl`: G21/G90/G17,
+G92 work origin at the platter centre, safe-Z rapid to P1, plunge, cut, retract, M30;
+`stoma-plotter`: the legacy program). Remedy's example file (P4-4) becomes a third
+dialect, not a rewrite. The polar M200/M201 plan is retained for legacy parity only.
+**Grace ring (FR-07)** is a true polygon buffer (shapely, round joins) resampled to the
+outline's point count — exact clearance in concave (peanut/kidney) regions where the
+Swift per-vertex method pushed points inward; the gate checks min *and* max, not the
+mean. The Swift algorithm stays as `generate_legacy` for fixture parity.
+**Measurement on real meshes**: crop to a region of interest around the marker
+(background/table no longer dominate heights or loops); floor = the marker/skin plane,
+not the mesh minimum; slice height and margin in mm; diameter is the exact max chord
+over the raw loop (samples under-read by 0.1–0.3 mm); lens distortion is carried from
+the engine and removed before triangulation; marker triangulation seeds from the median
+of pairwise solutions and drops outlier views, weighted by marker pixel size; "up" is
+the marker normal **refined** by a RANSAC fit of the peristomal skin near the card
+(kept only when it agrees within 15°). Also fixed a port bug in
+`point_in_polygon_2d` (negative denominator clamped) that pushed the polar origin —
+the G-code centre — off the outline centroid by ~1.7 mm.
+**Engine contract widened**: `reconstruct()` returns mesh **+ engine-neutral camera
+poses** (`poses.json`); COLMAP's file parsing moved into `worker-colmap/`. The
+measurement stage (`app/measure_stage.py`) consumes poses, so the Mac fallback is a
+real drop-in: a `MeasurementWorker` finishes any `mesh_ready` job from storage.
+**Queue hardening** (migration 0004): one generic atomic claim for every stage;
+`attempts` + a stale-claim watchdog (requeue, then fail) so a dead worker never
+strands a job; the keyframe stage is a queue stage (in-API thread by default, or
+standalone), not a FastAPI BackgroundTask; hard timeouts on reconstruction and
+measurement; paginated storage listing (the 100-item default silently dropped frames
+beyond 100); artefact paths recorded before anything else can fail; server-side
+`result` merge; `/health` reports queue counts + oldest claim age; the pipeline ends
+at **`measured`** — `done` is reserved for the cut (P4). Errors are split into a
+patient-safe `error` sentence (shown as-is) and a server-side `error_detail`.
+**Web**: never simulates when a real API is configured; `failed` is a real error
+state; the ±1 mm badge only shows when a truth value exists (it was `?? true`);
+uploads keep the phone's container type; retries only on network/5xx; poll ceiling;
+scan id persisted across a phone lock; all patient copy in one file, ≥16 px, no
+engine names or deviation numbers on screen. Deps are pinned for the images
+(`backend/requirements.txt`, Dockerfile ARG refs verified to exist); CI now covers
+worker-colmap and web. Docker images were **not** rebuilt in this session (no daemon
+available) — first deploy re-verifies them.
+
 ## D15 — 2026-08-26 · Live deploy: single CPU droplet now, GPU deferred; OpenMVS pinned v2.1.0
 Deployed the whole backend (API + COLMAP/OpenMVS worker + Caddy auto-TLS) onto one
 CPU droplet (159.65.233.200, HTTPS at 159-65-233-200.sslip.io) because the DO

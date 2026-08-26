@@ -41,6 +41,5 @@ export function sampleResult(): ScanResult {
     within_tolerance: true,
     outline_mm: outline,
     wafer_outline_mm: offsetOutward(outline, 3.0), // 3 mm grace ring (FR-07)
-    engine: "colmap+openmvs",
   };
 }

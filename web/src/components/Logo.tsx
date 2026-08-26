@@ -18,7 +18,7 @@ export function Wordmark() {
   return (
     <div className="flex items-center gap-3">
       <LogoMark size={34} />
-      <div className="text-[15px] font-semibold leading-none tracking-tight">
+      <div className="text-base font-semibold leading-none tracking-tight">
         Stoma<span className="text-muted"> Companion</span>
       </div>
     </div>

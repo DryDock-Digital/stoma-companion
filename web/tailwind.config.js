@@ -13,7 +13,7 @@ export default {
         "line-strong": "rgba(255,255,255,0.13)",
         ink: "#F3F6F9",
         muted: "#9AA5B2",
-        faint: "#5B6572",
+        faint: "#7C8794", // ≥4.5:1 on base and surface (WCAG AA)
         accent: "#2DD4BF",
         "accent-strong": "#14B8A6",
         "accent-ink": "#04211D",

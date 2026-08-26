@@ -135,3 +135,62 @@ def test_all_methods_score_and_chain_prefers_aruco():
     assert chain[0] == "aruco"
     assert chain[-1] == "pca"
     assert boards["aruco"].summary()["max_error_deg"] < 1.0
+
+
+# --- robust triangulation + distortion (review fix) ---------------------------
+
+
+def test_undistort_inverts_distort():
+    from app.measure.orientation import distort_normalized, undistort_normalized
+
+    x = np.linspace(-0.4, 0.4, 9)
+    y = np.linspace(-0.3, 0.3, 9)
+    d = np.array([-0.2, 0.05, 0.001, -0.002, 0.01])
+    xd, yd = distort_normalized(x, y, d)
+    xu, yu = undistort_normalized(xd, yd, d)
+    assert np.allclose(xu, x, atol=1e-9) and np.allclose(yu, y, atol=1e-9)
+
+
+def test_robust_triangulation_drops_a_bad_view():
+    from app.measure.orientation import PinholeCamera, triangulate_robust
+
+    pts = np.array([[0.0, 0.0, 0.0], [20.0, 0.0, 0.0], [20.0, 20.0, 0.0], [0.0, 20.0, 0.0]])
+    cams = [
+        PinholeCamera.look_at(
+            (80 * np.cos(a), 80 * np.sin(a), 90.0), (10, 10, 0), image_size=(800, 800)
+        )
+        for a in np.linspace(0, 2 * np.pi, 8, endpoint=False)
+    ]
+    obs = [c.project(pts) for c in cams]
+    obs[3] = obs[3] + np.array([40.0, -25.0])  # a mis-detection / motion-blurred frame
+    tri = triangulate_robust(cams, obs, reproj_threshold_px=1.0)
+    assert not tri.inlier_mask[3] and tri.inlier_mask.sum() == 7
+    assert np.allclose(tri.points, pts, atol=1e-3)
+
+
+def test_skin_refinement_keeps_marker_when_skin_disagrees():
+    from app.measure.orientation import refine_up_axis_with_skin
+
+    rng = np.random.default_rng(1)
+    # skin tilted 25° from the marker → beyond max_deviation → marker wins
+    tilt = np.deg2rad(25)
+    u = np.array([np.cos(tilt), 0, -np.sin(tilt)])
+    v = np.array([0, 1.0, 0])
+    pts = rng.uniform(-40, 40, (400, 1)) * u + rng.uniform(-40, 40, (400, 1)) * v
+    choice = refine_up_axis_with_skin(
+        [0, 0, 1.0], [0, 0, 0], pts, orient_toward=[0, 0, 100.0], max_deviation_deg=15
+    )
+    assert choice.method == "aruco"
+    assert np.allclose(choice.normal, [0, 0, 1])
+    # 5° off → refined to the skin
+    tilt = np.deg2rad(5)
+    u = np.array([np.cos(tilt), 0, -np.sin(tilt)])
+    pts = rng.uniform(-40, 40, (400, 1)) * u + rng.uniform(-40, 40, (400, 1)) * v
+    choice = refine_up_axis_with_skin(
+        [0, 0, 1.0], [0, 0, 0], pts, orient_toward=[0, 0, 100.0], max_deviation_deg=15
+    )
+    assert choice.method == "aruco+ransac"
+    assert (
+        abs(np.degrees(np.arccos(abs(choice.normal @ np.array([np.sin(tilt), 0, np.cos(tilt)])))))
+        < 0.5
+    )

@@ -1,37 +1,56 @@
-"""Parse a COLMAP sparse model (text export) into PinholeCameras (P1-10).
+"""Parse a COLMAP sparse model (text export) into engine-neutral PinholeCameras.
 
-The reconstruction worker exports `cameras.txt` + `images.txt`
-(`colmap model_converter --output_type TXT`). This turns them into a
-`{image_name: PinholeCamera}` map so the same multi-view triangulation used for
-orientation (P2-2) can recover the ArUco marker's 3-D corners in the mesh's own
-coordinate frame — giving real-world **scale** (P1-6) and **up** (FR-04).
+This is the COLMAP side of the reconstruction contract: `pipeline.sh` exports
+`cameras.txt` + `images.txt` (`colmap model_converter --output_type TXT`) and
+`ColmapReconstructor` turns them into the `{image_name: PinholeCamera}` map that
+goes into `poses.json`. Nothing in `backend/` knows COLMAP's file formats.
 
 COLMAP conventions: `images.txt` stores the world→camera rotation as a quaternion
 (qw, qx, qy, qz) and translation (tx, ty, tz) — exactly PinholeCamera's R, t. The
 OpenMVS dense mesh shares COLMAP's world frame, so the recovered scale/normal apply
-directly to the mesh. Lens distortion is ignored (marker corners are near the image
-centre and the effect on scale is negligible for the demo).
+directly to the mesh. **Lens distortion is carried through** (SIMPLE_RADIAL is
+COLMAP's default; a phone wide lens puts several px of error at the marker
+corners) and removed from observations before triangulation.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-from .orientation import PinholeCamera
+from app.measure.orientation import PinholeCamera
 
 
-def _intrinsics(model: str, w: int, h: int, params: list[float]) -> np.ndarray:
-    """K from a COLMAP camera model. Handles the common pinhole-ish models; falls
-    back to (focal from first param, principal point at image centre)."""
-    if model in ("PINHOLE", "OPENCV", "FULL_OPENCV"):
-        fx, fy, cx, cy = params[0], params[1], params[2], params[3]
-    elif model in ("SIMPLE_PINHOLE", "SIMPLE_RADIAL", "RADIAL"):
-        f, cx, cy = params[0], params[1], params[2]
+def _intrinsics(
+    model: str, w: int, h: int, params: list[float]
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """(K, OpenCV dist[k1,k2,p1,p2,k3]) from a COLMAP camera model."""
+    dist: np.ndarray | None = None
+    if model == "PINHOLE":
+        fx, fy, cx, cy = params[:4]
+    elif model == "OPENCV":
+        fx, fy, cx, cy, k1, k2, p1, p2 = params[:8]
+        dist = np.array([k1, k2, p1, p2, 0.0])
+    elif model == "FULL_OPENCV":
+        fx, fy, cx, cy, k1, k2, p1, p2, k3 = params[:9]
+        dist = np.array([k1, k2, p1, p2, k3])
+    elif model == "SIMPLE_PINHOLE":
+        f, cx, cy = params[:3]
         fx = fy = f
-    else:  # unknown model — best effort
+    elif model == "SIMPLE_RADIAL":
+        f, cx, cy, k = params[:4]
+        fx = fy = f
+        dist = np.array([k, 0.0, 0.0, 0.0, 0.0])
+    elif model == "RADIAL":
+        f, cx, cy, k1, k2 = params[:5]
+        fx = fy = f
+        dist = np.array([k1, k2, 0.0, 0.0, 0.0])
+    else:  # fisheye / unknown — best effort, no distortion model
         fx = fy = params[0]
         cx, cy = w / 2, h / 2
-    return np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1.0]])
+    K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1.0]])
+    if dist is not None and not np.any(dist):
+        dist = None
+    return K, dist
 
 
 def _quat_to_rot(qw: float, qx: float, qy: float, qz: float) -> np.ndarray:
@@ -78,9 +97,21 @@ def parse_model(cameras_txt: str, images_txt: str) -> dict[str, PinholeCamera]:
         cam_id = int(f[8])
         name = f[9]
         model, w, h, params = cams[cam_id]
+        K, dist = _intrinsics(model, w, h, params)
         out[name] = PinholeCamera(
-            K=_intrinsics(model, w, h, params),
+            K=K,
             R=_quat_to_rot(qw, qx, qy, qz),
             t=np.array([tx, ty, tz]),
+            dist=dist,
+            image_size=(w, h),
+            meta={"colmap_model": model},
         )
     return out
+
+
+def load_sparse_txt(sparse_dir) -> dict[str, PinholeCamera]:
+    """`{name: PinholeCamera}` from a directory holding cameras.txt + images.txt."""
+    from pathlib import Path
+
+    d = Path(sparse_dir)
+    return parse_model((d / "cameras.txt").read_text(), (d / "images.txt").read_text())

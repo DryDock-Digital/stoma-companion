@@ -11,10 +11,12 @@ drop-in replacement if the P1-5 quality gate misses.
 
 | File | Role |
 |---|---|
-| `pipeline.sh` | the COLMAP→OpenMVS command chain (feature → match → map → undistort → densify → mesh → texture → OBJ) |
-| `reconstruct.py` | `ColmapReconstructor` — a `Reconstructor` that shells out to `pipeline.sh` |
-| `worker.py` | entrypoint: queue-polling mode, or `--local` one-shot mode |
-| `Dockerfile` | COLMAP (CUDA base) + OpenMVS from source + the backend package |
+| `pipeline.sh` | the COLMAP→OpenMVS command chain (feature → match → map → undistort → densify → mesh → texture → OBJ; poses exported as TXT into the work dir) |
+| `reconstruct.py` | `ColmapReconstructor` — a `Reconstructor` that shells out to `pipeline.sh` with a hard timeout and returns mesh **+ poses** |
+| `colmap_model.py` | COLMAP `cameras.txt`/`images.txt` → engine-neutral `PinholeCamera`s (intrinsics, pose, distortion) |
+| `worker.py` | entrypoint: queue mode (reconstruct + measure inline, and finish any `mesh_ready` job from another engine), or `--local` one-shot |
+| `Dockerfile` / `Dockerfile.cpu` | COLMAP (CUDA base / Ubuntu apt) + OpenMVS from source (pinned refs) + the backend package |
+| `tests/` | contract tests that run without COLMAP (CI) |
 
 The queue loop, job store and contract are **not** duplicated here — they're
 imported from the backend `app` package so there's a single implementation.
@@ -24,8 +26,11 @@ imported from the backend `app` package so there's a single implementation.
 Build from the **repo root** (the image needs both `backend/` and `worker-colmap/`):
 
 ```bash
-docker build -f worker-colmap/Dockerfile -t stoma-worker .
+docker build -f worker-colmap/Dockerfile -t stoma-worker .        # CUDA
+docker build -f worker-colmap/Dockerfile.cpu -t stoma-worker .    # CPU droplet (D15)
 ```
+
+Deploy to the droplet with `infra/deploy-worker.sh` (CPU by default).
 
 Targets a CUDA GPU droplet; final sizing is decided at P1-5 when the quality
 harness is up (see `infra/digitalocean/create-worker-droplet.sh`).

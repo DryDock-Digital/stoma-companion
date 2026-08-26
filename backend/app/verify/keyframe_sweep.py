@@ -179,7 +179,10 @@ def run_keyframe_sweep(
                 work_dir = Path(tmp) / "work"
                 work_dir.mkdir()
                 with timer.stage("reconstruct"):
-                    mesh_path = reconstructor.reconstruct(kf_dir, work_dir)
+                    out = reconstructor.reconstruct(kf_dir, work_dir)
+                # engines return ReconstructionOutput (mesh + poses); a bare path
+                # is accepted for rigs/fakes that only produce a mesh
+                mesh_path = getattr(out, "mesh_path", out)
                 vertices, faces = load_mesh(Path(mesh_path))
                 with timer.stage("measure"):
                     diameter = base_diameter(vertices, faces, normal, scale, auto=auto_height)

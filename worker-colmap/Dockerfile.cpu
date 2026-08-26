@@ -19,17 +19,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /opt
 
+# Pinned source refs — a floating `master` drifted once already (D15). Override
+# with --build-arg if a bump is deliberate; re-run the suite after.
+ARG TINYEXIF_REF=1.1.0
+ARG TINYNPY_REF=v1.1
+ARG POSELIB_REF=v2.0.4
+ARG VCGLIB_REF=v1.0.1
+ARG OPENMVS_REF=v2.1.0
+
 # Ceres (apt) is another OpenMVS find_package dep; TinyEXIF/TinyNPY/PoseLib from source.
 RUN apt-get update && apt-get install -y --no-install-recommends libceres-dev \
     && rm -rf /var/lib/apt/lists/* \
-    && git clone --depth 1 https://github.com/cdcseacave/TinyEXIF.git \
+    && git clone --depth 1 --branch "$TINYEXIF_REF" https://github.com/cdcseacave/TinyEXIF.git \
     && cmake -S TinyEXIF -B TinyEXIF/build -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_DEMO=OFF -DBUILD_SHARED_LIBS=ON \
     && cmake --build TinyEXIF/build -j2 --target install \
-    && git clone --depth 1 https://github.com/cdcseacave/TinyNPY.git \
+    && git clone --depth 1 --branch "$TINYNPY_REF" https://github.com/cdcseacave/TinyNPY.git \
     && cmake -S TinyNPY -B TinyNPY/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON \
     && cmake --build TinyNPY/build -j2 --target install \
-    && git clone --depth 1 --recursive https://github.com/PoseLib/PoseLib.git \
+    && git clone --depth 1 --recursive --branch "$POSELIB_REF" https://github.com/PoseLib/PoseLib.git \
     && cmake -S PoseLib -B PoseLib/build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build PoseLib/build -j2 --target install \
     && ldconfig
@@ -37,8 +45,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends libceres-dev \
 # VCGLib (header-only) + OpenMVS. Pinned to v2.1.0: OpenMVS master needs OpenCV 4.8 +
 # CGAL 6, but Ubuntu 24.04 ships 4.6 + 5.6 — v2.1.0 matches the OS libraries and needs
 # only the basic deps. -j2 keeps compile RAM under the 8 GB the small droplet has.
-RUN git clone --depth 1 https://github.com/cdcseacave/VCG.git vcglib \
-    && git clone --depth 1 --branch v2.1.0 https://github.com/cdcseacave/openMVS.git \
+RUN git clone --depth 1 --branch "$VCGLIB_REF" https://github.com/cdcseacave/VCG.git vcglib \
+    && git clone --depth 1 --branch "$OPENMVS_REF" https://github.com/cdcseacave/openMVS.git \
     && mkdir openMVS_build && cd openMVS_build \
     && cmake ../openMVS -DCMAKE_BUILD_TYPE=Release -DVCG_ROOT=/opt/vcglib -DOpenMVS_USE_CUDA=OFF \
     && make -j2 && make install && ldconfig
@@ -48,13 +56,15 @@ ENV PATH="/usr/local/bin/OpenMVS:${PATH}"
 # reconstruction *and* the measurement stage (P1-10) inline, so it needs the
 # `measure` extra (numpy/trimesh/opencv). Force CPU in COLMAP.
 WORKDIR /app
-COPY backend/pyproject.toml backend/pyproject.toml
+COPY backend/pyproject.toml backend/requirements.txt backend/
 COPY backend/app backend/app
-RUN pip3 install --no-cache-dir --break-system-packages "./backend[measure]"
+RUN pip3 install --no-cache-dir --break-system-packages -c backend/requirements.txt "./backend[measure]"
 
 COPY worker-colmap/ ./worker
 WORKDIR /app/worker
 ENV PYTHONPATH=/app/backend
 ENV COLMAP_USE_GPU=0
+# safety bound for one reconstruction (CPU dense stereo is slow; FR-11 target is 120 s)
+ENV RECONSTRUCT_TIMEOUT_S=3600
 
 CMD ["python3", "worker.py"]

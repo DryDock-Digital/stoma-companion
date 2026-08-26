@@ -58,7 +58,7 @@ colmap image_undistorter \
 # Export camera poses as TXT next to the mesh — the measurement stage (P1-10) uses
 # them to triangulate the ArUco marker for real-world scale + orientation.
 echo "[colmap] export sparse poses (TXT)"
-SPARSE_TXT="$(dirname "$OUTPUT_OBJ")/sparse_txt"
+SPARSE_TXT="$WORK_DIR/sparse_txt"
 mkdir -p "$SPARSE_TXT"
 colmap model_converter --input_path "$MODEL" --output_path "$SPARSE_TXT" --output_type TXT
 

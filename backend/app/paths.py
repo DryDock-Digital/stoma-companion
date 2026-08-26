@@ -4,6 +4,8 @@ API, keyframe stage and reconstruction workers agree on layout.
     <job_id>/input.mov
     <job_id>/keyframes/frame_00000.jpg …
     <job_id>/mesh.obj
+    <job_id>/poses.json        # engine-neutral camera poses (measure/poses.py)
+    <job_id>/wafer.gcode       # the cut program (P4 sender reads this, never `result`)
 """
 
 from __future__ import annotations
@@ -27,3 +29,11 @@ def calibration_key(job_id: str) -> str:
 
 def mesh_key(job_id: str) -> str:
     return f"{job_id}/mesh.obj"
+
+
+def poses_key(job_id: str) -> str:
+    return f"{job_id}/poses.json"
+
+
+def gcode_key(job_id: str) -> str:
+    return f"{job_id}/wafer.gcode"

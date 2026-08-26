@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from app.measure import colmap_model as cm
+import colmap_model as cm  # noqa: E402 — worker module (conftest adds the path)
 from app.measure.orientation import PinholeCamera
 
 
@@ -51,6 +51,23 @@ def test_simple_radial_intrinsics():
         "1 SIMPLE_RADIAL 800 600 750 400 300 0.01\n",
         "1 1 0 0 0 0 0 1 1 a.jpg\n0 0 -1\n",
     )
-    K = cams["a.jpg"].K
+    cam = cams["a.jpg"]
+    K = cam.K
     assert K[0, 0] == 750 and K[1, 1] == 750  # f
     assert K[0, 2] == 400 and K[1, 2] == 300  # cx, cy
+    assert cam.dist is not None and cam.dist[0] == 0.01  # k carried through
+    assert cam.image_size == (800, 600)
+
+
+def test_opencv_model_carries_tangential_terms():
+    cams = cm.parse_model(
+        "1 OPENCV 800 600 750 740 400 300 -0.1 0.02 0.001 -0.002\n",
+        "1 1 0 0 0 0 0 1 1 a.jpg\n0 0 -1\n",
+    )
+    d = cams["a.jpg"].dist
+    assert np.allclose(d, [-0.1, 0.02, 0.001, -0.002, 0.0])
+
+
+def test_pinhole_has_no_distortion():
+    cams = cm.parse_model("1 PINHOLE 8 6 5 5 4 3\n", "1 1 0 0 0 0 0 1 1 a.jpg\n0 0 -1\n")
+    assert cams["a.jpg"].dist is None

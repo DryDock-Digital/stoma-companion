@@ -1,17 +1,17 @@
-"""COLMAP reconstruction worker entrypoint (P1-4).
+"""COLMAP reconstruction + measurement worker entrypoint (P1-4, P1-10).
 
 Two modes:
 
-  # queue mode (default): poll Supabase, reconstruct claimed jobs
+  # queue mode (default): poll Supabase; reconstruct claimed jobs, measure inline,
+  # and also pick up any `mesh_ready` job left by another engine (Mac fallback)
   python worker.py
 
-  # local mode: reconstruct a keyframe directory straight to an OBJ — the P1-4
-  # acceptance path ("produces a mesh from fixture keyframes"), no queue needed
+  # local mode: reconstruct a keyframe directory straight to an OBJ (+ poses.json)
   python worker.py --local <keyframe_dir> <output.obj>
 
-The queue contract + store live in the backend `app` package, imported here so
-there is exactly one implementation of the contract (install with
-`pip install -e ../backend`; the Docker image does this).
+The queue contract, store and measurement stage live in the backend `app`
+package, imported here so there is exactly one implementation of each
+(`pip install -e "../backend[measure]"`; the Docker image does this).
 """
 
 from __future__ import annotations
@@ -24,9 +24,11 @@ import tempfile
 from pathlib import Path
 
 from app.config import Settings
-from app.queue import ReconstructionWorker
+from app.measure import poses as poses_mod
+from app.measure_stage import MeasureStage
+from app.queue import CombinedWorker, MeasurementWorker, ReconstructionWorker
+from app.runlog import build_run_store
 from app.store import build_store
-
 from reconstruct import ColmapReconstructor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -36,10 +38,11 @@ log = logging.getLogger("worker-colmap")
 def run_local(keyframe_dir: Path, output_obj: Path) -> None:
     engine = ColmapReconstructor()
     with tempfile.TemporaryDirectory() as tmp:
-        mesh = engine.reconstruct(keyframe_dir, Path(tmp))
+        out = engine.reconstruct(keyframe_dir, Path(tmp))
         output_obj.parent.mkdir(parents=True, exist_ok=True)
-        output_obj.write_bytes(Path(mesh).read_bytes())
-    log.info("wrote mesh → %s", output_obj)
+        output_obj.write_bytes(Path(out.mesh_path).read_bytes())
+        output_obj.with_name("poses.json").write_text(poses_mod.dumps(out.cameras))
+    log.info("wrote mesh → %s (+ poses.json, %d frames)", output_obj, len(out.cameras))
 
 
 def run_queue() -> None:
@@ -47,21 +50,22 @@ def run_queue() -> None:
     if not settings.supabase_configured:
         sys.exit("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set — see .env.example")
     store = build_store(settings)
-
-    # Measure inline after reconstruction (P1-10) so a job goes straight to `done`.
-    from app.runlog import build_run_store
-
-    from measure_hook import make_measure_hook
-
-    hook = make_measure_hook(build_run_store(settings))
-    worker = ReconstructionWorker(
+    worker_id = os.environ.get("WORKER_ID", "colmap-1")
+    measurer = MeasureStage(build_run_store(settings), timeout_s=settings.measure_timeout_s)
+    poller_kwargs = {
+        "claim_timeout_s": settings.claim_timeout_s,
+        "max_attempts": settings.max_attempts,
+    }
+    reconstruction = ReconstructionWorker(
         store,
-        ColmapReconstructor(),
-        worker_id=os.environ.get("WORKER_ID", "colmap-1"),
-        measure_hook=hook,
+        ColmapReconstructor(timeout_s=settings.reconstruct_timeout_s),
+        worker_id=worker_id,
+        measurer=measurer,
+        **poller_kwargs,
     )
+    measurement = MeasurementWorker(store, measurer, worker_id=worker_id, **poller_kwargs)
     poll = float(os.environ.get("WORKER_POLL_INTERVAL", "5"))
-    worker.run_forever(poll_interval=poll)
+    CombinedWorker(reconstruction, measurement).run_forever(poll_interval=poll)
 
 
 def main() -> None:

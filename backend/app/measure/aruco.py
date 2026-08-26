@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-ARUCO_DICT = "DICT_4X4_50"
+ARUCO_DICT = "DICT_4X4_50"  # default only; every detector call accepts a dictionary name
 MAX_SIDE_CV = 0.12  # MeshArUcoOrbitDetector.maxSideCV — reject inconsistent squares
 
 
@@ -34,18 +34,28 @@ class MarkerDetection:
     corners_px: np.ndarray  # (4,2) TL, TR, BR, BL — cv2.aruco order
 
 
-def _aruco_dictionary():
+def _aruco_dictionary(name: str = ARUCO_DICT):
     import cv2  # lazy
 
-    return cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, ARUCO_DICT))
+    if not hasattr(cv2.aruco, name):
+        raise ValueError(f"unknown ArUco dictionary {name!r}")
+    return cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, name))
 
 
-def detect_markers(image: np.ndarray) -> list[MarkerDetection]:
-    """Detect DICT_4X4_50 markers. `image` is a grayscale or BGR uint8 array."""
+def quad_area_px(corners: np.ndarray) -> float:
+    """Area of the detected marker quad in pixels² (shoelace) — a view-quality weight."""
+    c = np.asarray(corners, dtype=float)
+    x, y = c[:, 0], c[:, 1]
+    return 0.5 * abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
+
+
+def detect_markers(image: np.ndarray, dictionary_name: str = ARUCO_DICT) -> list[MarkerDetection]:
+    """Detect markers from `dictionary_name` (default DICT_4X4_50). `image` is a
+    grayscale or BGR uint8 array."""
     import cv2
 
     gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    dictionary = _aruco_dictionary()
+    dictionary = _aruco_dictionary(dictionary_name)
     # Support both the new (>=4.7) and legacy cv2.aruco APIs.
     if hasattr(cv2.aruco, "ArucoDetector"):
         detector = cv2.aruco.ArucoDetector(dictionary, cv2.aruco.DetectorParameters())
@@ -73,13 +83,16 @@ class HomographyResult:
 
 
 def pixel_to_mm_homography(
-    image: np.ndarray, marker_side_mm: float, expected_id: int = -1
+    image: np.ndarray,
+    marker_side_mm: float,
+    expected_id: int = -1,
+    dictionary_name: str = ARUCO_DICT,
 ) -> HomographyResult | None:
     """Planar pixel→mm homography from a known-size marker (ArUcoDetectorBridge
     homographyFromImage). Picks `expected_id` if present, else the first marker."""
     import cv2
 
-    detections = detect_markers(image)
+    detections = detect_markers(image, dictionary_name)
     if not detections:
         return None
     chosen = next((d for d in detections if d.marker_id == expected_id), detections[0])

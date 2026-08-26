@@ -1,14 +1,18 @@
+import { COPY } from "../lib/copy";
 import { PHASE_COPY, PHASES, type Phase } from "../lib/flow";
 import { CheckIcon } from "./icons";
 
-export function PhaseSteps({ current }: { current: Phase }) {
+/** `complete` = the current phase has finished (e.g. job is `measured`): it shows as
+ *  done and the following phase is labelled "Next" instead of being skipped. */
+export function PhaseSteps({ current, complete = false }: { current: Phase; complete?: boolean }) {
   const activeIndex = PHASES.indexOf(current);
 
   return (
     <ol className="flex flex-col gap-1">
       {PHASES.map((phase, i) => {
-        const done = i < activeIndex;
-        const active = i === activeIndex;
+        const done = i < activeIndex || (i === activeIndex && complete);
+        const active = i === activeIndex && !complete;
+        const next = complete && i === activeIndex + 1;
         return (
           <li key={phase} className="flex items-center gap-3.5 py-1.5">
             <div className="relative grid h-8 w-8 shrink-0 place-items-center">
@@ -23,7 +27,7 @@ export function PhaseSteps({ current }: { current: Phase }) {
                   "grid h-8 w-8 place-items-center rounded-full border transition-colors " +
                   (done
                     ? "border-accent/50 bg-accent/15 text-accent"
-                    : active
+                    : active || next
                       ? "border-accent bg-accent/10 text-accent"
                       : "border-line bg-white/[0.02] text-faint")
                 }
@@ -40,15 +44,16 @@ export function PhaseSteps({ current }: { current: Phase }) {
             <div className="min-w-0">
               <div
                 className={
-                  "text-[15px] font-medium leading-tight " +
-                  (active ? "text-ink" : done ? "text-muted" : "text-faint")
+                  "text-base font-medium leading-tight " +
+                  (active || next ? "text-ink" : done ? "text-muted" : "text-faint")
                 }
               >
                 {PHASE_COPY[phase].label}
               </div>
               {active && (
-                <div className="text-[13px] leading-tight text-muted">{PHASE_COPY[phase].caption}</div>
+                <div className="text-base leading-tight text-muted">{PHASE_COPY[phase].caption}</div>
               )}
+              {next && <div className="text-base leading-tight text-muted">{COPY.processing.next}</div>}
             </div>
           </li>
         );

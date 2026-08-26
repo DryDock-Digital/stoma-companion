@@ -1,26 +1,21 @@
 """Scan endpoints (P1-1).
 
-POST /scans      video upload → storage, job row `pending`, keyframe stage queued
-GET  /scans/{id} status + result
+POST /scans      video upload → storage, job row `pending` (the keyframe worker claims it)
+GET  /scans/{id} status + result (patient-safe error text only)
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import time
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
 from .. import paths
 from ..config import Settings
-from ..keyframes import KeyframeParams
 from ..models import JobStatus, ScanCreated, ScanStatus
 from ..store import JobStore
 
 router = APIRouter(prefix="/scans", tags=["scans"])
-
-# Processor signature: (store, job_id, params) -> None. Injected so tests can
-# swap the real keyframe stage (which shells out to ffmpeg) for a stub.
-Processor = Callable[[JobStore, str, KeyframeParams], None]
 
 _ACCEPTED_PREFIXES = ("video/",)
 _ACCEPTED_TYPES = {"application/octet-stream", ""}
@@ -30,51 +25,51 @@ def get_store(request: Request) -> JobStore:
     return request.app.state.store
 
 
-def get_processor(request: Request) -> Processor:
-    return request.app.state.processor
-
-
 def get_app_settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
 @router.post("", status_code=201, response_model=ScanCreated)
 async def create_scan(
-    background: BackgroundTasks,
     video: UploadFile = File(...),
     store: JobStore = Depends(get_store),
     settings: Settings = Depends(get_app_settings),
-    processor: Processor = Depends(get_processor),
 ) -> ScanCreated:
     content_type = video.content_type or ""
     if not (content_type.startswith(_ACCEPTED_PREFIXES) or content_type in _ACCEPTED_TYPES):
         raise HTTPException(415, f"Unsupported upload type: {content_type!r}; expected a video.")
 
+    t0 = time.perf_counter()
     data = await video.read()
+    receive_s = time.perf_counter() - t0
     if not data:
         raise HTTPException(400, "Empty upload.")
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(413, f"Upload exceeds {settings.max_upload_mb} MB limit.")
 
-    # Carry the knobs used for this run so it stays reproducible (FR-07 ring, etc.).
+    # Carry every knob used for this run so it stays reproducible (FR-07 ring, marker
+    # size, dialect, …) — downstream stages read the job, never the process env.
     job = store.create_job(
         config={
             "keyframe_interval_seconds": settings.keyframe_interval_seconds,
             "keyframe_max_frames": settings.keyframe_max_frames,
-            "grace_ring_mm": settings.grace_ring_mm,
+            **settings.measure_config(),
         }
     )
 
     video_key = paths.video_key(job.id)
+    t1 = time.perf_counter()
     store.put_object(video_key, data, content_type or "video/quicktime")
+    store_s = time.perf_counter() - t1
     store.update_job(job.id, video_path=video_key)
-
-    params = KeyframeParams(
-        interval_seconds=settings.keyframe_interval_seconds,
-        max_frames=settings.keyframe_max_frames,
+    # upload time is part of the ≤2 min budget (FR-11): record what the server saw
+    store.patch_result(
+        job.id,
+        {
+            "timings_s": {"upload": round(receive_s + store_s, 4)},
+            "upload_bytes": len(data),
+        },
     )
-    background.add_task(processor, store, job.id, params)
-
     return ScanCreated(id=job.id, status=JobStatus.PENDING)
 
 

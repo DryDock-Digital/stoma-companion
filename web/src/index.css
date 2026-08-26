@@ -80,11 +80,11 @@
 
   .pill {
     @apply inline-flex items-center gap-1.5 rounded-full border border-line
-      bg-white/[0.04] px-3 py-1 text-xs font-medium tracking-wide text-muted;
+      bg-white/[0.04] px-3 py-1 text-base font-medium tracking-wide text-muted;
   }
 
   .eyebrow {
-    @apply text-xs font-semibold uppercase tracking-[0.2em] text-accent;
+    @apply text-base font-semibold uppercase tracking-[0.16em] text-accent;
   }
 }
 

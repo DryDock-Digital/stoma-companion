@@ -8,11 +8,14 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Install deps first for layer caching.
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
+# Deps first (cached layer), pinned by requirements.txt; the package itself is
+# installed after the source is copied (pip install . needs app/ present).
+COPY pyproject.toml requirements.txt ./
+RUN pip install --no-cache-dir -c requirements.txt \
+        fastapi "uvicorn[standard]" pydantic pydantic-settings python-multipart supabase
 
 COPY app ./app
+RUN pip install --no-cache-dir --no-deps .
 
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

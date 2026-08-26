@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { COPY } from "../lib/copy";
 import type { ScanResult } from "../lib/flow";
 
 type Pt = [number, number];
@@ -86,8 +87,8 @@ export function OutlineChart({ result }: { result: ScanResult }) {
         <line x1={0} y1={0} x2={scaleBarPx} y2={0} stroke="rgba(255,255,255,0.4)" strokeWidth={1.4} />
         <line x1={0} y1={-3} x2={0} y2={3} stroke="rgba(255,255,255,0.4)" strokeWidth={1.4} />
         <line x1={scaleBarPx} y1={-3} x2={scaleBarPx} y2={3} stroke="rgba(255,255,255,0.4)" strokeWidth={1.4} />
-        <text x={scaleBarPx / 2} y={-8} textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.55)">
-          10 mm
+        <text x={scaleBarPx / 2} y={-9} textAnchor="middle" fontSize="15" fill="rgba(255,255,255,0.75)">
+          {COPY.result.scaleBar}
         </text>
       </g>
     </svg>

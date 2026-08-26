@@ -1,22 +1,23 @@
 """Persistence for jobs + objects, behind one protocol so the API, keyframe
-extractor and queue poller never import Supabase directly.
+extractor and queue pollers never import Supabase directly.
 
 Two implementations:
   - InMemoryJobStore: dev + tests, no external services.
   - SupabaseJobStore: production, backed by the jobs table + `scans` bucket.
 
-Both expose the same surface, so tests exercise the real code paths.
+Both expose the same surface and are run through the same contract test
+(tests/test_store_contract.py; Supabase behind an env flag).
 """
 
 from __future__ import annotations
 
 import threading
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
 from .config import Settings
-from .models import Job, JobStatus
+from .models import IN_PROGRESS_TO_CLAIMABLE, Job, JobStatus
 
 
 @runtime_checkable
@@ -25,7 +26,16 @@ class JobStore(Protocol):
     def create_job(self, *, config: dict[str, Any] | None = None) -> Job: ...
     def get_job(self, job_id: str) -> Job | None: ...
     def update_job(self, job_id: str, **fields: Any) -> Job: ...
-    def claim_next_job(self, worker_id: str, engine: str) -> Job | None: ...
+    def patch_result(self, job_id: str, patch: dict[str, Any]) -> Job: ...
+    def claim_next_job(
+        self,
+        worker_id: str,
+        engine: str | None,
+        from_status: JobStatus = JobStatus.KEYFRAMES_READY,
+        to_status: JobStatus = JobStatus.RECONSTRUCTING,
+    ) -> Job | None: ...
+    def requeue_stale_jobs(self, older_than_s: float, max_attempts: int) -> list[Job]: ...
+    def queue_stats(self) -> dict[str, Any]: ...
 
     # --- object storage (`scans` bucket) ---
     def put_object(self, path: str, data: bytes, content_type: str) -> str: ...
@@ -36,6 +46,20 @@ class JobStore(Protocol):
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _merge_result(existing: dict[str, Any] | None, patch: dict[str, Any]) -> dict[str, Any]:
+    """Shallow merge, with `timings_s` merged one level deeper so stages that run in
+    different processes never clobber each other's timings."""
+    merged = dict(existing or {})
+    for k, v in patch.items():
+        if k == "timings_s":
+            t = dict(merged.get("timings_s", {}))
+            t.update(v or {})
+            merged["timings_s"] = t
+        else:
+            merged[k] = v
+    return merged
 
 
 class InMemoryJobStore:
@@ -75,26 +99,86 @@ class InMemoryJobStore:
             self._jobs[job_id] = updated
             return updated.model_copy(deep=True)
 
-    def claim_next_job(self, worker_id: str, engine: str) -> Job | None:
-        """Atomically flip the oldest keyframes_ready job to reconstructing.
+    def patch_result(self, job_id: str, patch: dict[str, Any]) -> Job:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise KeyError(job_id)
+            updated = job.model_copy(
+                update={"result": _merge_result(job.result, patch), "updated_at": _now()}
+            )
+            self._jobs[job_id] = updated
+            return updated.model_copy(deep=True)
+
+    def claim_next_job(
+        self,
+        worker_id: str,
+        engine: str | None,
+        from_status: JobStatus = JobStatus.KEYFRAMES_READY,
+        to_status: JobStatus = JobStatus.RECONSTRUCTING,
+    ) -> Job | None:
+        """Atomically flip the oldest `from_status` job to `to_status`.
         Mirrors the claim_next_job() SQL RPC (FOR UPDATE SKIP LOCKED)."""
         with self._lock:
-            claimable = [j for j in self._jobs.values() if j.status == JobStatus.KEYFRAMES_READY]
+            claimable = [j for j in self._jobs.values() if j.status == from_status]
             if not claimable:
                 return None
             claimable.sort(key=lambda j: (j.created_at or _now(), j.id))
             job = claimable[0]
-            updated = job.model_copy(
-                update={
-                    "status": JobStatus.RECONSTRUCTING,
-                    "worker_id": worker_id,
-                    "engine": engine,
-                    "claimed_at": _now(),
-                    "updated_at": _now(),
-                }
-            )
+            update = {
+                "status": to_status,
+                "worker_id": worker_id,
+                "claimed_at": _now(),
+                "attempts": job.attempts + 1,
+                "updated_at": _now(),
+            }
+            if engine is not None:
+                update["engine"] = engine
+            updated = job.model_copy(update=update)
             self._jobs[job.id] = updated
             return updated.model_copy(deep=True)
+
+    def requeue_stale_jobs(self, older_than_s: float, max_attempts: int) -> list[Job]:
+        """Return in-progress jobs whose claim is older than `older_than_s` to their
+        claimable state (or fail them once `attempts` reached `max_attempts`)."""
+        cutoff = _now() - timedelta(seconds=older_than_s)
+        touched: list[Job] = []
+        with self._lock:
+            for job in list(self._jobs.values()):
+                back = IN_PROGRESS_TO_CLAIMABLE.get(job.status)
+                if back is None or job.claimed_at is None or job.claimed_at > cutoff:
+                    continue
+                if job.attempts >= max_attempts:
+                    from .errors import DEFAULT_MESSAGES
+
+                    update = {
+                        "status": JobStatus.FAILED,
+                        "error": DEFAULT_MESSAGES["timeout"],
+                        "error_detail": (
+                            f"stage {job.status.value} claimed by {job.worker_id} at "
+                            f"{job.claimed_at.isoformat()} never completed "
+                            f"({job.attempts} attempts)"
+                        ),
+                        "error_stage": "timeout",
+                    }
+                else:
+                    update = {"status": back, "worker_id": None, "claimed_at": None}
+                updated = job.model_copy(update={**update, "updated_at": _now()})
+                self._jobs[job.id] = updated
+                touched.append(updated.model_copy(deep=True))
+        return touched
+
+    def queue_stats(self) -> dict[str, Any]:
+        with self._lock:
+            counts: dict[str, int] = {}
+            oldest: float | None = None
+            now = _now()
+            for job in self._jobs.values():
+                counts[job.status.value] = counts.get(job.status.value, 0) + 1
+                if job.status in IN_PROGRESS_TO_CLAIMABLE and job.claimed_at is not None:
+                    age = (now - job.claimed_at).total_seconds()
+                    oldest = age if oldest is None else max(oldest, age)
+        return {"counts": counts, "oldest_claim_age_s": oldest}
 
     def put_object(self, path: str, data: bytes, content_type: str) -> str:
         with self._lock:
@@ -123,6 +207,8 @@ class SupabaseJobStore:
     Supabase credentials — tests and CI use the in-memory store instead.
     """
 
+    LIST_PAGE = 1000  # storage.list() pages; default is 100 → silently truncates
+
     def __init__(self, settings: Settings) -> None:
         from supabase import create_client  # imported here to keep it optional
 
@@ -150,11 +236,46 @@ class SupabaseJobStore:
             raise KeyError(job_id)
         return self._row_to_job(res.data[0])
 
-    def claim_next_job(self, worker_id: str, engine: str) -> Job | None:
+    def patch_result(self, job_id: str, patch: dict[str, Any]) -> Job:
         res = self._client.rpc(
-            "claim_next_job", {"p_worker_id": worker_id, "p_engine": engine}
+            "patch_job_result", {"p_id": job_id, "p_patch": _jsonable(patch)}
+        ).execute()
+        if not res.data:
+            raise KeyError(job_id)
+        return self._row_to_job(res.data[0])
+
+    def claim_next_job(
+        self,
+        worker_id: str,
+        engine: str | None,
+        from_status: JobStatus = JobStatus.KEYFRAMES_READY,
+        to_status: JobStatus = JobStatus.RECONSTRUCTING,
+    ) -> Job | None:
+        res = self._client.rpc(
+            "claim_next_job",
+            {
+                "p_worker_id": worker_id,
+                "p_engine": engine,
+                "p_from": from_status.value,
+                "p_to": to_status.value,
+            },
         ).execute()
         return self._row_to_job(res.data[0]) if res.data else None
+
+    def requeue_stale_jobs(self, older_than_s: float, max_attempts: int) -> list[Job]:
+        res = self._client.rpc(
+            "requeue_stale_jobs",
+            {"p_older_than_s": older_than_s, "p_max_attempts": max_attempts},
+        ).execute()
+        return [self._row_to_job(r) for r in (res.data or [])]
+
+    def queue_stats(self) -> dict[str, Any]:
+        res = self._client.rpc("queue_stats", {}).execute()
+        row = res.data[0] if isinstance(res.data, list) and res.data else (res.data or {})
+        return {
+            "counts": row.get("counts") or {},
+            "oldest_claim_age_s": row.get("oldest_claim_age_s"),
+        }
 
     def put_object(self, path: str, data: bytes, content_type: str) -> str:
         self._client.storage.from_(self._bucket).upload(
@@ -166,26 +287,50 @@ class SupabaseJobStore:
         return self._client.storage.from_(self._bucket).download(path)
 
     def list_objects(self, prefix: str) -> list[str]:
+        """All object keys under `prefix`, paging past Supabase's default 100-item
+        limit (a 350-frame keyframe set would otherwise be silently truncated)."""
         folder = prefix.rstrip("/")
-        items = self._client.storage.from_(self._bucket).list(folder)
-        return sorted(f"{folder}/{it['name']}" for it in items)
+        names: list[str] = []
+        offset = 0
+        while True:
+            items = self._client.storage.from_(self._bucket).list(
+                folder, {"limit": self.LIST_PAGE, "offset": offset}
+            )
+            names.extend(it["name"] for it in items if it.get("name"))
+            if len(items) < self.LIST_PAGE:
+                break
+            offset += self.LIST_PAGE
+        return sorted(f"{folder}/{n}" for n in names)
 
     def signed_url(self, path: str, expires_in: int = 3600) -> str:
         res = self._client.storage.from_(self._bucket).create_signed_url(path, expires_in)
         return res["signedURL"]
 
 
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, JobStatus):
+        return value.value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    try:  # numpy scalars without importing numpy
+        import numpy as np
+
+        if isinstance(value, np.generic):
+            return value.item()
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+    except ImportError:  # pragma: no cover
+        pass
+    return value
+
+
 def _serialize_fields(fields: dict[str, Any]) -> dict[str, Any]:
-    """Coerce enums/datetimes to JSON-friendly values for the DB client."""
-    out: dict[str, Any] = {}
-    for key, value in fields.items():
-        if isinstance(value, JobStatus):
-            out[key] = value.value
-        elif isinstance(value, datetime):
-            out[key] = value.isoformat()
-        else:
-            out[key] = value
-    return out
+    """Coerce enums/datetimes/numpy to JSON-friendly values for the DB client."""
+    return {key: _jsonable(value) for key, value in fields.items()}
 
 
 def build_store(settings: Settings) -> JobStore:

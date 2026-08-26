@@ -1,29 +1,65 @@
-"""Queue contract tests (P1-3): claim semantics + an end-to-end worker run
-driven by a fake in-process reconstructor (no COLMAP)."""
+"""Queue contract tests (P1-3/P1-10): generic claim semantics, the widened
+reconstructor contract (mesh + poses), inline + standalone measurement, failure
+paths, and the stale-claim watchdog — all driven by fakes (no COLMAP)."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import numpy as np
+import pytest
+
 from app import paths
+from app.errors import StageError
+from app.measure import poses as poses_mod
+from app.measure.orientation import PinholeCamera
 from app.models import JobStatus
-from app.queue import ReconstructionWorker
+from app.queue import (
+    CombinedWorker,
+    MeasurementWorker,
+    ReconstructionOutput,
+    ReconstructionWorker,
+)
 from app.store import InMemoryJobStore
+
+
+def _cam() -> PinholeCamera:
+    return PinholeCamera.look_at((0, 0, 100.0), (0, 0, 0), image_size=(640, 480))
 
 
 class FakeReconstructor:
     name = "fake-engine"
 
-    def __init__(self) -> None:
+    def __init__(self, fail_with: Exception | None = None) -> None:
         self.calls = 0
+        self.fail_with = fail_with
 
-    def reconstruct(self, keyframe_dir: Path, work_dir: Path) -> Path:
+    def reconstruct(self, keyframe_dir: Path, work_dir: Path) -> ReconstructionOutput:
         self.calls += 1
-        # A real engine reads the JPEGs; we just assert they were staged.
-        assert list(keyframe_dir.glob("frame_*.jpg")), "keyframes not staged"
+        if self.fail_with:
+            raise self.fail_with
+        frames = sorted(keyframe_dir.glob("frame_*.jpg"))
+        assert frames, "keyframes not staged"
         mesh = work_dir / "mesh.obj"
         mesh.write_text("o stoma\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
-        return mesh
+        return ReconstructionOutput(
+            mesh_path=mesh,
+            cameras={f.name: _cam() for f in frames},
+            diagnostics={"registered": len(frames)},
+        )
+
+
+class FakeMeasurer:
+    def __init__(self, fail_with: Exception | None = None) -> None:
+        self.calls: list = []
+        self.fail_with = fail_with
+
+    def measure(self, job, mesh_path, cameras, keyframe_dir):
+        self.calls.append((job.id, mesh_path.exists(), len(cameras), keyframe_dir))
+        if self.fail_with:
+            raise self.fail_with
+        return {"diameter_mm": 33.0, "within_tolerance": None, "gcode": "G21\nG1 X1 Y1\nM30\n"}
 
 
 def _ready_job_with_keyframes(store: InMemoryJobStore, n: int = 8):
@@ -36,25 +72,35 @@ def _ready_job_with_keyframes(store: InMemoryJobStore, n: int = 8):
     return job
 
 
+# --- claim -----------------------------------------------------------------
+
+
 def test_claim_returns_none_when_empty():
     store = InMemoryJobStore()
     assert store.claim_next_job("w1", "fake") is None
 
 
-def test_claim_flips_status_and_is_exclusive():
+def test_claim_flips_status_bumps_attempts_and_is_exclusive():
     store = InMemoryJobStore()
     job = _ready_job_with_keyframes(store)
 
     claimed = store.claim_next_job("w1", "fake-engine")
-    assert claimed is not None
-    assert claimed.id == job.id
+    assert claimed is not None and claimed.id == job.id
     assert claimed.status == JobStatus.RECONSTRUCTING
-    assert claimed.worker_id == "w1"
-    assert claimed.engine == "fake-engine"
-    assert claimed.claimed_at is not None
-
-    # already claimed → no second worker gets it
+    assert claimed.worker_id == "w1" and claimed.engine == "fake-engine"
+    assert claimed.claimed_at is not None and claimed.attempts == 1
     assert store.claim_next_job("w2", "fake-engine") is None
+
+
+def test_claim_is_generic_over_stages():
+    store = InMemoryJobStore()
+    job = store.create_job()
+    c = store.claim_next_job("k1", None, JobStatus.PENDING, JobStatus.EXTRACTING)
+    assert c.id == job.id and c.status == JobStatus.EXTRACTING and c.engine is None
+    store.update_job(job.id, status=JobStatus.MESH_READY, engine="mac")
+    c = store.claim_next_job("m1", None, JobStatus.MESH_READY, JobStatus.MEASURING)
+    assert c.status == JobStatus.MEASURING and c.engine == "mac"  # engine untouched
+    assert c.attempts == 2
 
 
 def test_claim_takes_oldest_first():
@@ -64,64 +110,232 @@ def test_claim_takes_oldest_first():
     a = store.claim_next_job("w1", "fake-engine")
     b = store.claim_next_job("w2", "fake-engine")
     assert {a.id, b.id} == {first.id, second.id}
-    assert a.id == first.id  # oldest first
+    assert a.id == first.id
 
 
-def test_worker_processes_job_to_mesh_ready():
+# --- reconstruction --------------------------------------------------------
+
+
+def test_worker_processes_job_to_mesh_ready_with_poses():
     store = InMemoryJobStore()
     job = _ready_job_with_keyframes(store)
     engine = FakeReconstructor()
     worker = ReconstructionWorker(store, engine, worker_id="w1")
 
-    did_work = worker.run_once()
-    assert did_work is True
+    assert worker.run_once() is True
     assert engine.calls == 1
 
     done = store.get_job(job.id)
     assert done.status == JobStatus.MESH_READY
     assert done.mesh_path == paths.mesh_key(job.id)
+    assert done.poses_path == paths.poses_key(job.id)
     assert store.get_object(done.mesh_path).startswith(b"o stoma")
-    # reconstruction stage timing is recorded on the job (P2-6)
-    assert "reconstruct" in (done.result or {}).get("timings_s", {})
+    cams = poses_mod.loads(store.get_object(done.poses_path))
+    assert len(cams) == 8 and isinstance(next(iter(cams.values())), PinholeCamera)
+    timings = done.result["timings_s"]
+    assert {"download", "reconstruct", "upload"} <= set(timings)
+    assert done.result["engine"] == "fake-engine"
+    assert done.result["registered_frames"] == 8
 
 
-def test_worker_marks_failed_when_no_keyframes():
+def test_worker_marks_failed_with_patient_safe_message_when_no_keyframes():
     store = InMemoryJobStore()
     job = store.create_job()
-    store.update_job(job.id, status=JobStatus.KEYFRAMES_READY)  # no objects uploaded
-    worker = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1")
-
-    worker.run_once()
+    store.update_job(job.id, status=JobStatus.KEYFRAMES_READY)
+    ReconstructionWorker(store, FakeReconstructor(), worker_id="w1").run_once()
     failed = store.get_job(job.id)
     assert failed.status == JobStatus.FAILED
-    assert "no keyframes" in (failed.error or "")
+    assert failed.error_stage == "reconstruct"
+    assert "no keyframes" in failed.error_detail
+    assert "keyframes" not in failed.error  # patient text, not the raw message
+    assert failed.error.endswith(".")
+
+
+def test_engine_stage_error_message_is_used():
+    store = InMemoryJobStore()
+    _ready_job_with_keyframes(store)
+    exc = StageError("colmap exit 3", stage="reconstruct", user_message="Please film again.")
+    ReconstructionWorker(store, FakeReconstructor(fail_with=exc), worker_id="w1").run_once()
+    failed = next(iter(store._jobs.values()))
+    assert failed.error == "Please film again."
+    assert "colmap exit 3" in failed.error_detail
 
 
 def test_run_once_returns_false_when_idle():
     store = InMemoryJobStore()
-    worker = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1")
-    assert worker.run_once() is False
+    assert ReconstructionWorker(store, FakeReconstructor(), worker_id="w1").run_once() is False
 
 
-def test_measure_hook_drives_job_to_done(tmp_path):
-    """With a measure hook, the worker measures inline and marks the job done with
-    the merged result + a `measure` timing (P1-10)."""
+# --- measurement -----------------------------------------------------------
+
+
+def test_inline_measurement_drives_job_to_measured_with_gcode_object():
     store = InMemoryJobStore()
     job = _ready_job_with_keyframes(store)
-    captured = {}
-
-    def hook(j, mesh_path, keyframe_dir, work_dir):
-        captured["mesh_exists"] = mesh_path.exists()
-        captured["job_id"] = j.id
-        return {"diameter_mm": 33.0, "within_tolerance": True}
-
-    worker = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1", measure_hook=hook)
+    measurer = FakeMeasurer()
+    worker = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1", measurer=measurer)
     assert worker.run_once() is True
 
     done = store.get_job(job.id)
-    assert done.status == JobStatus.DONE
+    assert done.status == JobStatus.MEASURED  # not DONE — that's the cut (P4)
     assert done.mesh_path == paths.mesh_key(job.id)
+    assert done.gcode_path == paths.gcode_key(job.id)
+    assert store.get_object(done.gcode_path) == b"G21\nG1 X1 Y1\nM30\n"
     assert done.result["diameter_mm"] == 33.0
-    assert done.result["within_tolerance"] is True
-    assert "measure" in done.result["timings_s"] and "reconstruct" in done.result["timings_s"]
-    assert captured["mesh_exists"] and captured["job_id"] == job.id
+    assert "gcode" not in done.result  # never a JSON blob in the poll payload
+    assert {"reconstruct", "measure"} <= set(done.result["timings_s"])
+    assert measurer.calls[0][:3] == (job.id, True, 8)
+
+
+def test_measure_failure_keeps_the_mesh_artifacts():
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+    worker = ReconstructionWorker(
+        store, FakeReconstructor(), worker_id="w1", measurer=FakeMeasurer(RuntimeError("nan"))
+    )
+    worker.run_once()
+    failed = store.get_job(job.id)
+    assert failed.status == JobStatus.FAILED and failed.error_stage == "measure"
+    assert failed.mesh_path and failed.poses_path  # a good mesh is never hidden by a bad measure
+    assert store.get_object(failed.mesh_path)
+
+
+def test_measurement_worker_picks_up_mesh_ready_from_another_engine(tmp_path):
+    """A Mac worker (no measurer) leaves mesh_ready; the measurement worker
+    finishes it from storage alone — that's what makes the fallback a drop-in."""
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+    ReconstructionWorker(store, FakeReconstructor(), worker_id="mac-1").run_once()
+    assert store.get_job(job.id).status == JobStatus.MESH_READY
+
+    measurer = FakeMeasurer()
+    mw = MeasurementWorker(store, measurer, worker_id="m1")
+    assert mw.run_once() is True
+    done = store.get_job(job.id)
+    assert done.status == JobStatus.MEASURED and done.gcode_path
+    assert measurer.calls[0][2] == 8  # cameras came from poses.json
+    assert mw.run_once() is False
+
+
+def test_combined_worker_runs_both_stages():
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+    orphan = _ready_job_with_keyframes(store)
+    store.update_job(
+        orphan.id,
+        status=JobStatus.MESH_READY,
+        mesh_path=paths.mesh_key(orphan.id),
+        poses_path=paths.poses_key(orphan.id),
+    )
+    store.put_object(paths.mesh_key(orphan.id), b"o x\n", "model/obj")
+    store.put_object(
+        paths.poses_key(orphan.id), poses_mod.dumps({"a": _cam()}).encode(), "application/json"
+    )
+
+    m = FakeMeasurer()
+    cw = CombinedWorker(
+        ReconstructionWorker(store, FakeReconstructor(), worker_id="w", measurer=m),
+        MeasurementWorker(store, m, worker_id="w"),
+    )
+    cw.run_forever(poll_interval=0, _max_idle_polls=1)
+    assert store.get_job(job.id).status == JobStatus.MEASURED
+    assert store.get_job(orphan.id).status == JobStatus.MEASURED
+
+
+# --- robustness ------------------------------------------------------------
+
+
+def test_store_failure_while_recording_error_does_not_kill_worker():
+    store = InMemoryJobStore()
+    _ready_job_with_keyframes(store)
+    calls = {"n": 0}
+    real_update = store.update_job
+
+    def flaky_update(job_id, **fields):
+        calls["n"] += 1
+        raise ConnectionError("supabase blip")
+
+    store.update_job = flaky_update  # every write fails
+    worker = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1")
+    assert worker.run_once() is True  # no exception escaped
+    store.update_job = real_update
+    assert calls["n"] >= 1
+
+
+def test_watchdog_requeues_stale_claim_then_fails_it():
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+    claimed = store.claim_next_job("w1", "fake")
+    # nothing stale yet
+    assert store.requeue_stale_jobs(older_than_s=60, max_attempts=2) == []
+    # age the claim
+    store._jobs[job.id] = store._jobs[job.id].model_copy(
+        update={"claimed_at": datetime.now(UTC) - timedelta(seconds=120)}
+    )
+    touched = store.requeue_stale_jobs(older_than_s=60, max_attempts=2)
+    assert [t.id for t in touched] == [job.id]
+    back = store.get_job(job.id)
+    assert back.status == JobStatus.KEYFRAMES_READY and back.worker_id is None
+    assert back.attempts == claimed.attempts == 1
+
+    # second claim + second stall → failed for good with a patient-safe message
+    store.claim_next_job("w2", "fake")
+    store._jobs[job.id] = store._jobs[job.id].model_copy(
+        update={"claimed_at": datetime.now(UTC) - timedelta(seconds=120)}
+    )
+    touched = store.requeue_stale_jobs(older_than_s=60, max_attempts=2)
+    failed = store.get_job(job.id)
+    assert failed.status == JobStatus.FAILED and failed.error_stage == "timeout"
+    assert "longer than expected" in failed.error
+    assert "2 attempts" in failed.error_detail
+
+
+def test_poller_runs_watchdog_in_loop():
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+    store.claim_next_job("dead", "fake")
+    store._jobs[job.id] = store._jobs[job.id].model_copy(
+        update={"claimed_at": datetime.now(UTC) - timedelta(seconds=999)}
+    )
+    engine = FakeReconstructor()
+    worker = ReconstructionWorker(store, engine, worker_id="w1", claim_timeout_s=60, max_attempts=3)
+    worker.run_forever(poll_interval=0, _max_idle_polls=1)
+    # the watchdog freed the job and this worker then processed it
+    assert engine.calls == 1
+    assert store.get_job(job.id).status == JobStatus.MESH_READY
+
+
+def test_patch_result_merges_timings_across_stages():
+    store = InMemoryJobStore()
+    job = store.create_job()
+    store.patch_result(job.id, {"timings_s": {"upload": 1.0}, "a": 1})
+    store.patch_result(job.id, {"timings_s": {"extract": 2.0}, "b": 2})
+    r = store.get_job(job.id).result
+    assert r == {"timings_s": {"upload": 1.0, "extract": 2.0}, "a": 1, "b": 2}
+
+
+def test_queue_stats_reports_oldest_claim():
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+    store.claim_next_job("w1", "fake")
+    store._jobs[job.id] = store._jobs[job.id].model_copy(
+        update={"claimed_at": datetime.now(UTC) - timedelta(seconds=30)}
+    )
+    stats = store.queue_stats()
+    assert stats["counts"] == {"reconstructing": 1}
+    assert 29 < stats["oldest_claim_age_s"] < 40
+
+
+def test_poses_round_trip():
+    cam = PinholeCamera(
+        K=np.eye(3) * 500,
+        R=np.eye(3),
+        t=np.array([0, 0, 5.0]),
+        dist=np.array([-0.1, 0.01, 0, 0, 0]),
+        image_size=(640, 480),
+    )
+    back = poses_mod.loads(poses_mod.dumps({"f.jpg": cam}))["f.jpg"]
+    assert np.allclose(back.K, cam.K) and np.allclose(back.t, cam.t)
+    assert np.allclose(back.dist, cam.dist) and back.image_size == (640, 480)
+    with pytest.raises(ValueError):
+        poses_mod.loads('{"format": "other", "cameras": {}}')

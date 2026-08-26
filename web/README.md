@@ -13,8 +13,10 @@ rounded controls, soft glows). No UI framework — a handful of hand-built compo
 ```
 src/
   App.tsx              flow controller (welcome → capture → processing → result)
-  api/client.ts        POST /scans + poll GET /scans/{id}; retry + network-drop; simulate
+  api/client.ts        ScanApi (upload/poll): RealScanApi + SimulatedScanApi; retry, poll ceiling
   lib/flow.ts          JobStatus → patient phase mapping (FR-12)
+  lib/copy.ts          every patient-facing string (one file to review for language)
+  lib/storage.ts       scan-id persistence (resume polling after phone lock)
   lib/sample.ts        sample measurement for the demo/simulated path
   components/          Logo, ProgressRing, PhaseSteps, OutlineChart, icons
   screens/             Welcome, Capture (MediaRecorder), Processing, Result
@@ -35,7 +37,7 @@ a sample result) so it's demoable anywhere. Point it at the service to run real
 scans:
 
 ```bash
-echo 'VITE_API_BASE=http://143.244.169.119:8000' > .env
+echo 'VITE_API_BASE=https://159-65-233-200.sslip.io' > .env   # must be https (mixed content)
 ```
 
 (The backend measurement result is wired in P1-10; until then a real scan progresses

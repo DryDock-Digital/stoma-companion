@@ -1,4 +1,7 @@
-"""Runtime configuration, loaded from environment (.env). See root .env.example."""
+"""Runtime configuration, loaded from environment (.env). See root .env.example.
+
+`.env` is looked up in the current directory *and* the repo root (`../.env`), so
+`backend/` and `worker-colmap/` share one file when run from their own folders."""
 
 from __future__ import annotations
 
@@ -8,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=(".env", "../.env"), extra="ignore")
 
     # --- Supabase ---
     supabase_url: str = ""
@@ -17,13 +20,30 @@ class Settings(BaseSettings):
 
     # --- API ---
     max_upload_mb: int = 512
+    #: run the keyframe stage worker inside the API process (thread). Off when a
+    #: separate `python -m app.keyframe_worker` process handles it.
+    run_keyframe_worker: bool = True
 
     # --- Keyframe extraction (ported VideoFrameExporter defaults) ---
     keyframe_interval_seconds: float = 0.35
     keyframe_max_frames: int = 350
 
-    # --- Measurement ---
+    # --- Measurement (carried onto every job's config → reproducible) ---
     grace_ring_mm: float = 3.0  # FR-07, configurable, never hard-coded
+    tolerance_mm: float = 1.0  # FR-09
+    marker_side_mm: float = 50.0  # printed ArUco card edge length
+    aruco_dict: str = "DICT_4X4_50"
+    gcode_dialect: str = "grbl"  # 'grbl' (P4 sim target) | 'stoma-plotter' (legacy)
+
+    # --- Queue robustness ---
+    #: a claim older than this with no completion is considered dead and requeued
+    claim_timeout_s: float = 1800.0
+    #: a job is failed for good after this many claims of the same stage
+    max_attempts: int = 2
+    #: hard timeout for one reconstruction run (safety bound, not the FR-11 target)
+    reconstruct_timeout_s: float = 1800.0
+    #: hard timeout for the measurement stage
+    measure_timeout_s: float = 300.0
 
     # --- Web app (P3) ---
     # Comma-separated allowed CORS origins; "*" for the demo phase.
@@ -40,6 +60,17 @@ class Settings(BaseSettings):
     @property
     def supabase_configured(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)
+
+    def measure_config(self) -> dict:
+        """The measurement knobs stamped onto a new job's `config` so the run is
+        reproducible and every stage reads one source of truth (the job)."""
+        return {
+            "grace_ring_mm": self.grace_ring_mm,
+            "tolerance_mm": self.tolerance_mm,
+            "marker_side_mm": self.marker_side_mm,
+            "aruco_dict": self.aruco_dict,
+            "gcode_dialect": self.gcode_dialect,
+        }
 
 
 @lru_cache

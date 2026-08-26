@@ -51,7 +51,7 @@ def _diameter(
     fixture: Fixture, vertices, faces, normal, fraction, spin, extra_meta
 ) -> MeasuredResult:
     result = slicing.extract_perimeter(vertices, faces, normal, fraction, spin_degrees=spin)
-    diameter_scene = slicing.max_planar_chord_length(result.samples)
+    diameter_scene = result.diameter()  # exact: max chord over the raw loop vertices
     return MeasuredResult(
         value_mm=diameter_scene * fixture.scale_mm_per_unit,
         metric="diameter",
