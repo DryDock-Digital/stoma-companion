@@ -81,6 +81,8 @@ def test_worker_processes_job_to_mesh_ready():
     assert done.status == JobStatus.MESH_READY
     assert done.mesh_path == paths.mesh_key(job.id)
     assert store.get_object(done.mesh_path).startswith(b"o stoma")
+    # reconstruction stage timing is recorded on the job (P2-6)
+    assert "reconstruct" in (done.result or {}).get("timings_s", {})
 
 
 def test_worker_marks_failed_when_no_keyframes():

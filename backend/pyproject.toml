@@ -28,9 +28,11 @@ dev = [
 ]
 
 [project.scripts]
-# Verification scoreboards (P2-1, P2-2). Need the `measure` extra.
+# Verification scoreboards + experiment rigs (P2). Need the `measure` extra.
 stoma-score = "app.verify.__main__:main"
 stoma-score-orientation = "app.verify.orientation:main"
+stoma-keyframe-sweep = "app.verify.keyframe_sweep:main"
+stoma-cycle-budget = "app.cycle_time:main"
 
 [build-system]
 requires = ["setuptools>=68"]

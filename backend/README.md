@@ -17,6 +17,7 @@ app/
   keyframes.py   ffmpeg keyframe extractor — port of VideoFrameExporter (P1-2)
   pipeline.py    post-upload stage: pending → extracting → keyframes_ready
   queue.py       reconstruction contract + reference poller (P1-3)
+  cycle_time.py  StageTimer + CycleReport — per-stage cycle-time budget (P2-6)
   routes/scans.py  POST /scans, GET /scans/{id}
   measure/       ported measurement maths + P2 algorithms:
     aruco.py       ArUco detection + scale derivation (P1-6)
@@ -32,15 +33,24 @@ app/
     __main__.py    the `stoma-score` CLI
     synthetic.py   synthetic ArUco scenes + skin point clouds at known poses (P2-2/P2-3)
     orientation.py orientation board: compare aruco/ransac/pca vs known normal
+    keyframe_sweep.py  reconstruction-vs-frame-count experiment rig (P2-5)
 tests/           pytest; no Supabase, no GPU, ffmpeg only for extractor integration
 ```
 
-## Scoreboards
+## Scoreboards & rigs
 
 ```bash
 stoma-score --method auto-height   # P2-1/P2-4: diameter vs caliper truth, ±1 mm, over fixtures/
 stoma-score-orientation            # P2-2/P2-3: compare aruco/ransac/pca "up" recovery (synthetic)
+stoma-keyframe-sweep --keyframes ./frames --truth 33.0   # P2-5: deviation + runtime vs frame count
+stoma-cycle-budget run-timings.json                       # P2-6: per-stage budget vs the ≤2 min target
 ```
+
+The last two answer *empirical* questions and produce honest numbers only on real
+footage: the sweep needs a reconstruction engine (COLMAP on the worker image) and the
+budget reads per-stage timings recorded on the job (keyframe extract + reconstruction
+already instrument themselves; `timings_s` on the job result). Validated here with a
+fake engine / injected clock — no invented answers.
 
 Both print per-item deviation + pass/fail + aggregates and exit non-zero on any
 miss. Each P2 algorithm ticket reports on one of these boards: orientation methods

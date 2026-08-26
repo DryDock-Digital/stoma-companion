@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 
 from . import paths
+from .cycle_time import StageTimer, merge_timing
 from .keyframes import KeyframeParams, extract_keyframes
 from .models import JobStatus
 from .store import JobStore
@@ -28,6 +29,7 @@ def run_keyframe_stage(store: JobStore, job_id: str, params: KeyframeParams) -> 
 
     try:
         store.update_job(job_id, status=JobStatus.EXTRACTING)
+        timer = StageTimer()
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             video_bytes = store.get_object(job.video_path)
@@ -35,7 +37,8 @@ def run_keyframe_stage(store: JobStore, job_id: str, params: KeyframeParams) -> 
             local_video.write_bytes(video_bytes)
 
             out_dir = tmp_dir / "keyframes"
-            result = extract_keyframes(local_video, out_dir, params)
+            with timer.stage("extract"):
+                result = extract_keyframes(local_video, out_dir, params)
 
             if result.calibration_path is not None:
                 store.put_object(
@@ -55,6 +58,7 @@ def run_keyframe_stage(store: JobStore, job_id: str, params: KeyframeParams) -> 
             status=JobStatus.KEYFRAMES_READY,
             keyframes_prefix=paths.keyframes_prefix(job_id),
             keyframe_count=result.count,
+            result=merge_timing(job.result, "extract", timer.get("extract")),
         )
         log.info("keyframe stage: job %s -> keyframes_ready (%d frames)", job_id, result.count)
     except Exception as exc:  # noqa: BLE001 — surface any failure onto the job row

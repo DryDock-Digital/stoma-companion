@@ -71,3 +71,20 @@ def auto_slice_fraction(
     else:
         base = fractions[int(np.argmax(areas))]
     return float(min(max(base, 0.0), 1.0))
+
+
+def base_diameter(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    normal,
+    scale: float = 1.0,
+    *,
+    auto: bool = True,
+    fraction: float = 0.5,
+) -> float:
+    """Base diameter (mm) = longest planar chord of the base slice × scale. Uses the
+    auto-detected height (`auto`) or a manual `fraction`. Shared by the diameter board
+    and the keyframe-sweep rig (P2-5)."""
+    frac = auto_slice_fraction(vertices, faces, normal) if auto else fraction
+    result = slicing.extract_perimeter(vertices, faces, normal, frac)
+    return slicing.max_planar_chord_length(result.samples) * scale

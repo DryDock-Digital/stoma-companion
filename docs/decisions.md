@@ -3,6 +3,21 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D12 — 2026-08-26 · P2-5/P2-6: build the rigs now, get real numbers on real footage
+Both tickets are empirical — the answers depend on COLMAP's behaviour on genuine
+video — so what's built now is the *instrumentation*, not fabricated numbers.
+**P2-5 keyframe minimization** (`stoma-keyframe-sweep`): reruns reconstruction +
+measurement at N ∈ {20,50,100,350} frames, recording deviation-vs-truth and
+runtime-vs-count with a table + ASCII plots + CSV. The engine is injected (the
+`Reconstructor` contract), so it's validated here against a fake degrading engine and
+runs for real on the worker-colmap image; when footage arrives the experiment is one
+command. **P2-6 cycle-time budget** (`stoma-cycle-budget`): a `StageTimer` + a
+`CycleReport` table against the 120 s target (FR-11) that names the bottleneck.
+Keyframe extract and reconstruction now record their own seconds onto the job
+(`result.timings_s`), so the first real video yields provisional per-stage numbers.
+Expectation (to be confirmed): reconstruction dominates the budget. Real numbers +
+tuning deferred with the footage (P0-3).
+
 ## D11 — 2026-08-26 · P2-3/P2-4: orientation fallback chain = ArUco → RANSAC → PCA; auto slice-height by area-profile junction
 **P2-3 orientation fallbacks.** Added marker-free plane fits on the peristomal-skin
 point cloud: RANSAC (robust to the stoma bump + reconstruction outliers) and PCA

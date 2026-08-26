@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Protocol
 
 from . import paths
+from .cycle_time import StageTimer, merge_timing
 from .models import Job, JobStatus
 from .store import JobStore
 
@@ -68,13 +69,24 @@ class ReconstructionWorker:
 
                 work_dir = tmp_dir / "work"
                 work_dir.mkdir()
-                mesh_path = self.reconstructor.reconstruct(keyframe_dir, work_dir)
+                timer = StageTimer()
+                with timer.stage("reconstruct"):
+                    mesh_path = self.reconstructor.reconstruct(keyframe_dir, work_dir)
 
                 mesh_key = paths.mesh_key(job.id)
                 self.store.put_object(mesh_key, Path(mesh_path).read_bytes(), "model/obj")
 
-            self.store.update_job(job.id, status=JobStatus.MESH_READY, mesh_path=mesh_key)
-            log.info("job %s -> mesh_ready (engine=%s)", job.id, self.reconstructor.name)
+            # carry the per-stage cycle-time budget on the job (P2-6)
+            result = merge_timing(job.result, "reconstruct", timer.get("reconstruct"))
+            self.store.update_job(
+                job.id, status=JobStatus.MESH_READY, mesh_path=mesh_key, result=result
+            )
+            log.info(
+                "job %s -> mesh_ready (engine=%s, %.1fs)",
+                job.id,
+                self.reconstructor.name,
+                timer.get("reconstruct"),
+            )
         except Exception as exc:  # noqa: BLE001 — record the failure on the job
             log.exception("reconstruction failed for job %s", job.id)
             self.store.update_job(job.id, status=JobStatus.FAILED, error=str(exc))
