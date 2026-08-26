@@ -26,8 +26,11 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -105,19 +108,43 @@ class _Poller:
         store: JobStore,
         worker_id: str,
         *,
-        claim_timeout_s: float = 1800.0,
+        claim_timeout_s: float = 600.0,
         max_attempts: int = 2,
         watchdog_every_s: float = 60.0,
+        heartbeat_s: float = 60.0,
     ) -> None:
         self.store = store
         self.worker_id = worker_id
         self.claim_timeout_s = claim_timeout_s
         self.max_attempts = max_attempts
         self.watchdog_every_s = watchdog_every_s
+        self.heartbeat_s = heartbeat_s
         self._last_watchdog = 0.0
 
     def run_once(self) -> bool:  # pragma: no cover - overridden
         raise NotImplementedError
+
+    @contextmanager
+    def heartbeat(self, job_id: str):
+        """Touch `claimed_at` every `heartbeat_s` while a stage runs, so the stale-claim
+        watchdog only ever fires on a worker that is actually dead — never on a slow
+        (CPU) reconstruction. Failures to heartbeat are logged, not fatal."""
+        stop = threading.Event()
+
+        def beat() -> None:
+            while not stop.wait(self.heartbeat_s):
+                try:
+                    self.store.update_job(job_id, claimed_at=datetime.now(UTC))
+                except Exception:  # noqa: BLE001
+                    log.warning("heartbeat failed for job %s", job_id, exc_info=True)
+
+        t = threading.Thread(target=beat, name=f"heartbeat-{job_id[:8]}", daemon=True)
+        t.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            t.join(timeout=5)
 
     def watchdog(self) -> list[Job]:
         """Requeue (or fail) stale claims. Safe to call often; cheap when idle."""
@@ -186,7 +213,7 @@ class ReconstructionWorker(_Poller):
         then measure inline when a measurer is attached."""
         stage = "reconstruct"
         try:
-            with tempfile.TemporaryDirectory() as tmp:
+            with tempfile.TemporaryDirectory() as tmp, self.heartbeat(job.id):
                 tmp_dir = Path(tmp)
                 keyframe_dir = tmp_dir / "keyframes"
                 keyframe_dir.mkdir()
@@ -217,6 +244,7 @@ class ReconstructionWorker(_Poller):
                     status=JobStatus.MESH_READY,
                     mesh_path=mesh_key,
                     poses_path=poses_key,
+                    attempts=0,  # attempts count per stage, not per job
                 )
                 self.store.patch_result(
                     job.id,
@@ -285,7 +313,7 @@ def measure_job(
         store.put_object(gcode_key, gcode_text.encode(), "text/plain")
         update["gcode_path"] = gcode_key
     store.patch_result(job.id, {**result, "timings_s": timer.as_dict()})
-    store.update_job(job.id, **update)
+    store.update_job(job.id, attempts=0, **update)
     log.info("job %s -> measured (%.1fs)", job.id, timer.get("measure"))
     return result
 
@@ -308,7 +336,7 @@ class MeasurementWorker(_Poller):
         from .measure import poses as poses_mod
 
         try:
-            with tempfile.TemporaryDirectory() as tmp:
+            with tempfile.TemporaryDirectory() as tmp, self.heartbeat(job.id):
                 tmp_dir = Path(tmp)
                 keyframe_dir = tmp_dir / "keyframes"
                 keyframe_dir.mkdir()

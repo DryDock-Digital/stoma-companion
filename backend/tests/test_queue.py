@@ -340,3 +340,41 @@ def test_poses_round_trip():
     assert np.allclose(back.dist, cam.dist) and back.image_size == (640, 480)
     with pytest.raises(ValueError):
         poses_mod.loads('{"format": "other", "cameras": {}}')
+
+
+def test_heartbeat_keeps_claim_fresh_during_slow_stage():
+    """A slow (CPU) reconstruction must not be killed by the watchdog: the worker
+    touches claimed_at while working (the first real video was failed at 30 min)."""
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+
+    class Slow(FakeReconstructor):
+        def reconstruct(self, keyframe_dir, work_dir):
+            import time
+
+            time.sleep(0.25)
+            return super().reconstruct(keyframe_dir, work_dir)
+
+    seen = []
+    real = store.update_job
+
+    def spy(job_id, **f):
+        if list(f) == ["claimed_at"]:
+            seen.append(f["claimed_at"])
+        return real(job_id, **f)
+
+    store.update_job = spy
+    w = ReconstructionWorker(store, Slow(), worker_id="w1", heartbeat_s=0.05)
+    assert w.run_once() is True
+    assert len(seen) >= 2  # heartbeats happened while reconstructing
+    assert store.get_job(job.id).attempts == 0  # reset on stage completion
+
+
+def test_attempts_are_per_stage():
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+    ReconstructionWorker(store, FakeReconstructor(), worker_id="w1").run_once()
+    assert store.get_job(job.id).attempts == 0
+    MeasurementWorker(store, FakeMeasurer(), worker_id="m1").run_once()
+    assert store.get_job(job.id).status == JobStatus.MEASURED
+    assert store.get_job(job.id).attempts == 0

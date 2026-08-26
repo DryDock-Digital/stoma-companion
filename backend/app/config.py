@@ -36,8 +36,10 @@ class Settings(BaseSettings):
     gcode_dialect: str = "grbl"  # 'grbl' (P4 sim target) | 'stoma-plotter' (legacy)
 
     # --- Queue robustness ---
-    #: a claim older than this with no completion is considered dead and requeued
-    claim_timeout_s: float = 1800.0
+    #: a claim whose heartbeat is older than this is considered dead and requeued.
+    #: Workers heartbeat claimed_at every 60 s while a stage runs, so this is about
+    #: dead workers, not slow stages.
+    claim_timeout_s: float = 600.0
     #: a job is failed for good after this many claims of the same stage
     max_attempts: int = 2
     #: hard timeout for one reconstruction run (safety bound, not the FR-11 target)

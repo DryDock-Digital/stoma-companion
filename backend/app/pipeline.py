@@ -76,6 +76,7 @@ def run_keyframe_stage(store: JobStore, job: Job | str, params: KeyframeParams) 
             status=JobStatus.KEYFRAMES_READY,
             keyframes_prefix=paths.keyframes_prefix(job_id),
             keyframe_count=result.count,
+            attempts=0,  # attempts count per stage
         )
         log.info("keyframe stage: job %s -> keyframes_ready (%d frames)", job_id, result.count)
     except Exception as exc:  # noqa: BLE001 — surface any failure onto the job row
@@ -111,5 +112,6 @@ class KeyframeWorker(_Poller):
         job = self.claim()
         if job is None:
             return False
-        self.processor(self.store, job, self.params)
+        with self.heartbeat(job.id):
+            self.processor(self.store, job, self.params)
         return True
