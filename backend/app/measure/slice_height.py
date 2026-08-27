@@ -31,9 +31,11 @@ class SliceHeightParams:
     n_levels: int = 32
     #: search for the base (the neck) starting this far above the skin junction (mm)
     margin_mm: float = 0.5
-    #: … and up to this far above it: the base is the narrowest section in that window
-    #: — what calipers close on — not a fixed offset that can land on the skin fillet
+    #: … and up to this far above it: the base is the first section in that window
+    #: where the profile has stopped changing (the fillet is over), else the narrowest
     neck_window_mm: float = 5.0
+    #: |dØ/dh| below this (mm per mm) counts as "stopped changing"
+    stable_slope_mm_per_mm: float = 0.35
     #: a downward area step must exceed this fraction of the max area to count as
     #: the skin→stoma junction; otherwise fall back to the widest section
     junction_drop_frac: float = 0.2
@@ -267,6 +269,13 @@ def base_height_from_profile(heights, diameters, params: SliceHeightParams = DEF
         return min(lo, float(h[-1]))
     smooth = np.convolve(np.pad(d, 1, mode="edge"), np.ones(3) / 3, mode="valid")
     idx = np.flatnonzero(window)
+    # First stable point: the fillet is a steep drop; once |slope| is small we are on
+    # the stoma proper. Taking the *minimum* instead walked up a tapering stoma to the
+    # top of the window (5.6 mm on the figure-8 model) and under-read its widths.
+    slope = np.gradient(smooth, h)
+    for i in idx:
+        if abs(slope[i]) <= params.stable_slope_mm_per_mm:
+            return float(h[i])
     return float(h[idx[int(np.argmin(smooth[idx]))]])
 
 

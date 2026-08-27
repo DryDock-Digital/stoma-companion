@@ -251,3 +251,20 @@ def test_tags_round_trip_and_csv():
         ).status_code
         == 400
     )
+
+
+def test_remeasure_resets_to_mesh_ready_and_clears_measurement():
+    client, store, runs = _client()
+    job_id = client.post(
+        "/admin/scans", files={"video": ("m1.mov", b"v", "video/quicktime")}
+    ).json()["id"]
+    assert client.post(f"/admin/scans/{job_id}/remeasure").status_code == 409  # no mesh yet
+    _measured(store, job_id)
+    store.update_job(job_id, poses_path=paths.poses_key(job_id))
+    d = client.post(f"/admin/scans/{job_id}/remeasure").json()
+    assert d["status"] == "mesh_ready" and d["diameter_mm"] is None
+    j = store.get_job(job_id)
+    assert "diameter_mm" not in j.result and "extract" in j.result["timings_s"]
+    assert j.gcode_path is None and j.attempts == 0
+    # the measurement worker can now claim it
+    assert store.claim_next_job("m", None, JobStatus.MESH_READY, JobStatus.MEASURING).id == job_id

@@ -473,3 +473,56 @@ def admin_rerun_scan(
         raise
     store.patch_result(job.id, {"upload_bytes": len(data), "stored_bytes": len(data)})
     return ScanCreated(id=job.id, status=JobStatus.PENDING)
+
+
+@router.post("/scans/{job_id}/remeasure", response_model=AdminScanDetail)
+def admin_remeasure_scan(
+    job_id: str,
+    store: JobStore = Depends(get_store),
+    run_store: RunStore = Depends(get_run_store),
+) -> AdminScanDetail:
+    """Re-run only the measurement stage from the stored mesh + poses + keyframes —
+    seconds, not a reconstruction. The job goes back to `mesh_ready` and the
+    measurement worker (on the GPU box) picks it up; previous measurement fields are
+    cleared so the bench never shows a stale number next to a new one."""
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(404, "Scan not found.")
+    if not (job.mesh_path and job.poses_path):
+        raise HTTPException(409, "This run has no stored mesh/poses to re-measure.")
+    if not store.list_objects(job.keyframes_prefix or paths.keyframes_prefix(job.id)):
+        raise HTTPException(409, "This run has no archived keyframes to re-measure from.")
+    res = dict(job.result or {})
+    for key in (
+        "diameter_mm",
+        "deviation_mm",
+        "deviation_min_mm",
+        "within_tolerance",
+        "outline_mm",
+        "wafer_outline_mm",
+        "shape",
+        "wafer_shape",
+        "clearance_mm",
+        "diagnostics",
+        "orientation_method",
+        "marker_views",
+        "scale_mm_per_unit",
+    ):
+        res.pop(key, None)
+    timings = dict(res.get("timings_s") or {})
+    timings.pop("measure", None)
+    res["timings_s"] = timings
+    res["remeasured_from"] = job.updated_at.isoformat() if job.updated_at else None
+    job = store.update_job(
+        job.id,
+        status=JobStatus.MESH_READY,
+        result=res,
+        gcode_path=None,
+        error=None,
+        error_detail=None,
+        error_stage=None,
+        attempts=0,
+        worker_id=None,
+        claimed_at=None,
+    )
+    return _detail(job, store, run_store)

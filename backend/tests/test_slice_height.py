@@ -92,3 +92,36 @@ def test_neck_rule_on_flat_profile_stays_near_junction():
     d = np.where(h < 2, 50.0, 33.0)  # slab then a perfect cylinder
     base = base_height_from_profile(h, d, SliceHeightParams())
     assert 2.0 <= base <= 7.5 and d[list(h).index(base)] == 33.0
+
+
+def test_tapering_stoma_base_is_first_stable_height_not_the_top_of_window():
+    """Figure-8 model: Ø drops 39→55?? no — Ø is flat from the fillet up and then tapers.
+    The base must be the first stable height (~1 mm), not 5 mm up where it is narrowest."""
+    from app.measure.slice_height import SliceHeightParams, base_height_from_profile
+
+    h = np.array(
+        [0.4, 0.7, 1.0, 1.3, 1.7, 2.0, 2.3, 2.6, 3.0, 3.3, 3.6, 4.0, 4.3, 4.6, 4.9, 5.3, 5.6]
+    )
+    d = np.array(
+        [
+            60.0,
+            54.8,
+            54.66,
+            54.72,
+            55.04,
+            54.88,
+            55.0,
+            54.8,
+            54.86,
+            54.61,
+            54.65,
+            54.65,
+            54.62,
+            54.5,
+            54.41,
+            54.22,
+            54.06,
+        ]
+    )
+    base = base_height_from_profile(h, d, SliceHeightParams())
+    assert base <= 1.7
