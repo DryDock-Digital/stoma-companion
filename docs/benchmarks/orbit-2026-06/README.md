@@ -20,6 +20,10 @@ Two things came out of it anyway:
 - **Frame density vs. distance** — the 245 mm/40° clip registered all 65 frames at 0.35 s
   spacing but none at 40 spread frames; the retry above covers this case too.
 
+Verified after the fixes (same clips, defaults): 245 mm/40° → 2/40 registered, automatic
+retry at 80 frames → 81 registered (57 s); light=med → 41/40 registered on the first pass
+(32 s). Both then stop at "no card", as they must.
+
 ## To benchmark tolerance across conditions
 
 Re-film the same matrix **with the 27 mm card** (see docs/test-protocol.md), drop the
