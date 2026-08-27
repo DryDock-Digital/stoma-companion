@@ -14,13 +14,17 @@ import {
   hasBackend,
   listScans,
   parseShape,
+  parseTagsText,
   patchScan,
   reportCsvUrl,
   rerunScan,
+  tagEntries,
+  tagsToText,
   type AdminScanDetail,
   type AdminScanSummary,
   type PatchRunInput,
   type QueueHealth,
+  type Tags,
 } from "../api/admin";
 import { OutlineChart } from "../components/OutlineChart";
 import { WidthChart } from "../components/admin/WidthChart";
@@ -140,6 +144,9 @@ function RunsList() {
   const [health, setHealth] = useState<QueueHealth | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [rerunning, setRerunning] = useState<string | null>(null);
+  const [filterText, setFilterText] = useState("");
+  const [filterSel, setFilterSel] = useState<Record<string, string>>({});
+  const [groupBy, setGroupBy] = useState<string>("");
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const [list, h] = await Promise.allSettled([listScans(50, signal), getHealth(signal)]);
@@ -181,24 +188,38 @@ function RunsList() {
     return () => clearInterval(t);
   }, [anyRunning, load]);
 
-  const agg = useMemo(() => {
-    const list = jobs ?? [];
-    const measured = list.filter((j) => j.diameter_mm != null);
-    const withTruth = measured.filter((j) => (j.truth_mm != null && j.deviation_mm != null) || (j.truth_min_mm != null && j.deviation_min_mm != null));
-    const devs: number[] = [];
-    for (const j of withTruth) {
-      if (j.deviation_mm != null) devs.push(Math.abs(j.deviation_mm));
-      if (j.deviation_min_mm != null) devs.push(Math.abs(j.deviation_min_mm));
-    }
-    return {
-      total: list.length,
-      measured: measured.length,
-      withTruth: withTruth.length,
-      pass: withTruth.filter((j) => j.within_tolerance === true).length,
-      meanAbs: devs.length ? devs.reduce((a, b) => a + b, 0) / devs.length : null,
-      maxAbs: devs.length ? Math.max(...devs) : null,
-    };
+  // Tag keys present in the loaded runs, with their distinct values (for quick filters / group-by).
+  const tagKeys = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const j of jobs ?? []) for (const [k, v] of tagEntries(j.tags)) (m.get(k) ?? m.set(k, new Set()).get(k)!).add(v);
+    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, vs]) => ({ key: k, values: [...vs].sort(cmpValues) }));
   }, [jobs]);
+
+  const filtered = useMemo(() => {
+    const q = filterText.trim().toLowerCase();
+    const sel = Object.entries(filterSel).filter(([, v]) => v !== "");
+    return (jobs ?? []).filter((j) => {
+      for (const [k, v] of sel) if (String(j.tags?.[k] ?? "") !== v) return false;
+      if (!q) return true;
+      const hay = [j.model_name ?? "", (j as { notes?: string | null }).notes ?? "", ...tagEntries(j.tags).map(([, v]) => v)].join("\n").toLowerCase();
+      return hay.includes(q);
+    });
+  }, [jobs, filterText, filterSel]);
+
+  const agg = useMemo(() => summarise(filtered), [filtered]);
+
+  const groups = useMemo(() => {
+    if (!groupBy) return null;
+    const m = new Map<string, AdminScanSummary[]>();
+    for (const j of filtered) {
+      const v = groupBy === "model" ? (j.model_name ?? "") : String(j.tags?.[groupBy] ?? "");
+      const key = v === "" ? "(none)" : v;
+      (m.get(key) ?? m.set(key, []).get(key)!).push(j);
+    }
+    return [...m.entries()].sort(([a], [b]) => cmpValues(a, b)).map(([value, rows]) => ({ value, rows, s: summarise(rows) }));
+  }, [filtered, groupBy]);
+
+  const filterActive = filterText.trim() !== "" || Object.values(filterSel).some((v) => v !== "");
 
   const clearAll = async () => {
     const typed = window.prompt("This deletes EVERY run, its verification-log row and all stored files. This cannot be undone.\n\nType DELETE to confirm.");
@@ -226,8 +247,8 @@ function RunsList() {
   return (
     <div className="space-y-4">
       <QueueStrip health={health} error={healthError} />
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
-        <Stat label="runs" value={String(agg.total)} />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-9">
+        <Stat label={filterActive ? "runs (filtered)" : "runs"} value={filterActive ? `${agg.total} / ${(jobs ?? []).length}` : String(agg.total)} />
         <Stat label="measured" value={String(agg.measured)} />
         <Stat label="with truth" value={String(agg.withTruth)} />
         <Stat
@@ -235,8 +256,11 @@ function RunsList() {
           value={agg.withTruth ? `${agg.pass} / ${agg.withTruth}` : "—"}
           tone={agg.withTruth ? (agg.pass === agg.withTruth ? "ok" : "fail") : undefined}
         />
-        <Stat label="mean |dev|" value={fmtMm(agg.meanAbs)} />
-        <Stat label="max |dev|" value={fmtMm(agg.maxAbs)} />
+        <Stat label="mean |dev| widest" value={fmtMm(agg.meanAbsMax)} />
+        <Stat label="max |dev| widest" value={fmtMm(agg.maxAbsMax)} />
+        <Stat label="mean |dev| narrowest" value={fmtMm(agg.meanAbsMin)} />
+        <Stat label="max |dev| narrowest" value={fmtMm(agg.maxAbsMin)} />
+        <Stat label="mean total" value={fmtSec(agg.meanTotalS)} />
       </div>
 
       {error && (
@@ -273,6 +297,94 @@ function RunsList() {
         }
         className="overflow-x-auto"
       >
+        {jobs && jobs.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+            <input
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="filter: model, notes, any tag value"
+              className="w-64 rounded-md border border-line bg-base/60 px-2.5 py-1 text-sm text-ink outline-none focus:border-accent"
+            />
+            {tagKeys.map(({ key, values }) => (
+              <label key={key} className="flex items-center gap-1 text-faint">
+                <span className="font-mono">{key}</span>
+                <select
+                  value={filterSel[key] ?? ""}
+                  onChange={(e) => setFilterSel((f) => ({ ...f, [key]: e.target.value }))}
+                  className="rounded-md border border-line bg-base/60 px-1.5 py-1 font-mono text-xs text-ink outline-none focus:border-accent"
+                >
+                  <option value="">any</option>
+                  {values.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            {filterActive && (
+              <button
+                className="rounded-md border border-line px-2 py-0.5 text-faint hover:text-ink"
+                onClick={() => {
+                  setFilterText("");
+                  setFilterSel({});
+                }}
+              >
+                clear filters
+              </button>
+            )}
+            <label className="ml-auto flex items-center gap-1 text-faint">
+              <span>group by</span>
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value)}
+                className="rounded-md border border-line bg-base/60 px-1.5 py-1 font-mono text-xs text-ink outline-none focus:border-accent"
+              >
+                <option value="">none</option>
+                <option value="model">model</option>
+                {tagKeys.map(({ key }) => (
+                  <option key={key} value={key}>
+                    {key}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
+        {groups && (
+          <table className="mb-4 w-full text-sm">
+            <thead className="text-left text-xs uppercase tracking-wider text-faint">
+              <tr>
+                <th className="pb-2 pr-3">{groupBy === "model" ? "model" : groupBy}</th>
+                <th className="pb-2 pr-3 text-right">runs</th>
+                <th className="pb-2 pr-3 text-right">with truth</th>
+                <th className="pb-2 pr-3 text-right">passes</th>
+                <th className="pb-2 pr-3 text-right">pass rate</th>
+                <th className="pb-2 pr-3 text-right">mean |dev| widest</th>
+                <th className="pb-2 pr-3 text-right">mean |dev| narrowest</th>
+                <th className="pb-2 text-right">mean total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map(({ value, rows, s: g }) => (
+                <tr key={value} className="border-t border-line">
+                  <td className="py-1.5 pr-3 font-mono text-xs">{value}</td>
+                  <td className="py-1.5 pr-3 text-right font-mono">{rows.length}</td>
+                  <td className="py-1.5 pr-3 text-right font-mono">{g.withTruth}</td>
+                  <td className="py-1.5 pr-3 text-right font-mono">{g.withTruth ? g.pass : "—"}</td>
+                  <td className={`py-1.5 pr-3 text-right font-mono ${g.withTruth ? (g.pass === g.withTruth ? "text-success" : "text-danger") : "text-faint"}`}>
+                    {g.withTruth ? `${Math.round((100 * g.pass) / g.withTruth)}%` : "—"}
+                  </td>
+                  <td className="py-1.5 pr-3 text-right font-mono">{fmtMm(g.meanAbsMax)}</td>
+                  <td className="py-1.5 pr-3 text-right font-mono">{fmtMm(g.meanAbsMin)}</td>
+                  <td className="py-1.5 text-right font-mono">{fmtSec(g.meanTotalS)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
         {jobs === null && !error ? (
           <p className="text-sm text-faint">loading…</p>
         ) : jobs && jobs.length === 0 ? (
@@ -288,6 +400,7 @@ function RunsList() {
               <tr>
                 <th className="pb-2 pr-3">id</th>
                 <th className="pb-2 pr-3">model</th>
+                <th className="pb-2 pr-3">tags</th>
                 <th className="pb-2 pr-3">status</th>
                 <th className="pb-2 pr-3 text-right">widest</th>
                 <th className="pb-2 pr-3 text-right">truth</th>
@@ -303,7 +416,14 @@ function RunsList() {
               </tr>
             </thead>
             <tbody>
-              {(jobs ?? []).map((j) => (
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={15} className="py-3 text-sm text-faint">
+                    no runs match the current filter
+                  </td>
+                </tr>
+              )}
+              {filtered.map((j) => (
                 <tr key={j.id} className="border-t border-line hover:bg-white/[0.03]">
                   <td className="py-2 pr-3 font-mono text-xs">
                     <a className="text-accent hover:underline" href={href.run(j.id)} title={j.id}>
@@ -311,6 +431,9 @@ function RunsList() {
                     </a>
                   </td>
                   <td className="py-2 pr-3">{j.model_name ?? <span className="text-faint">—</span>}</td>
+                  <td className="max-w-[18rem] py-2 pr-3">
+                    <TagChips tags={j.tags} />
+                  </td>
                   <td className="py-2 pr-3">
                     <StatusBadge status={j.status} />
                     {j.attempts > 1 && <span className="ml-1 text-xs text-faint">×{j.attempts}</span>}
@@ -353,6 +476,83 @@ function RunsList() {
 function devTone(dev: number | null, tol: number): string {
   if (dev == null) return "text-faint";
   return Math.abs(dev) <= tol ? "text-success" : "text-danger";
+}
+
+/** Numeric-aware ordering so "20" < "175" and mixed values still sort stably. */
+function cmpValues(a: string, b: string): number {
+  const na = Number(a);
+  const nb = Number(b);
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+  return a.localeCompare(b, undefined, { numeric: true });
+}
+
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+
+interface Summary {
+  total: number;
+  measured: number;
+  withTruth: number;
+  pass: number;
+  meanAbsMax: number | null;
+  maxAbsMax: number | null;
+  meanAbsMin: number | null;
+  maxAbsMin: number | null;
+  meanTotalS: number | null;
+}
+
+/** Aggregate read-out over a set of runs (also used per group in the benchmark table). */
+function summarise(list: AdminScanSummary[]): Summary {
+  const measured = list.filter((j) => j.diameter_mm != null);
+  const withTruth = measured.filter((j) => (j.truth_mm != null && j.deviation_mm != null) || (j.truth_min_mm != null && j.deviation_min_mm != null));
+  const devMax: number[] = [];
+  const devMin: number[] = [];
+  for (const j of withTruth) {
+    if (j.deviation_mm != null) devMax.push(Math.abs(j.deviation_mm));
+    if (j.deviation_min_mm != null) devMin.push(Math.abs(j.deviation_min_mm));
+  }
+  const totals = list.map((j) => j.total_s).filter((t): t is number => t != null && Number.isFinite(t));
+  return {
+    total: list.length,
+    measured: measured.length,
+    withTruth: withTruth.length,
+    pass: withTruth.filter((j) => j.within_tolerance === true).length,
+    meanAbsMax: mean(devMax),
+    maxAbsMax: devMax.length ? Math.max(...devMax) : null,
+    meanAbsMin: mean(devMin),
+    maxAbsMin: devMin.length ? Math.max(...devMin) : null,
+    meanTotalS: mean(totals),
+  };
+}
+
+function TagChips({ tags }: { tags: Tags | null | undefined }) {
+  const entries = tagEntries(tags);
+  if (entries.length === 0) return <span className="text-faint">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {entries.map(([k, v]) => (
+        <span key={k} className="whitespace-nowrap rounded-full border border-line bg-white/[0.03] px-1.5 py-0.5 font-mono text-[11px] leading-tight text-muted" title={`${k} = ${v}`}>
+          <span className="text-faint">{k}=</span>
+          <span className="text-ink">{v}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function TagsField({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  return (
+    <Field label="Tags (key=value per line, or JSON)">
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={4}
+        disabled={disabled}
+        placeholder={"group=175mm\ndistance_mm=175\nangle_deg=20\nphone=iphone-13"}
+        spellCheck={false}
+        className="w-full rounded-md border border-line bg-base/60 px-3 py-2 font-mono text-xs text-ink outline-none focus:border-accent"
+      />
+    </Field>
+  );
 }
 
 function QueueStrip({ health, error }: { health: QueueHealth | null; error: string | null }) {
@@ -412,6 +612,7 @@ function NewRun() {
   const [truthMin, setTruthMin] = useState("");
   const [reference, setReference] = useState(DEFAULT_REFERENCE);
   const [notes, setNotes] = useState("");
+  const [tagsText, setTagsText] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -423,11 +624,13 @@ function NewRun() {
     const truthNum = parseMm(truth);
     const truthMinNum = parseMm(truthMin);
     if (truthNum === undefined || truthMinNum === undefined) return setError("Caliper truths must be numbers (mm).");
+    const tags = parseTagsText(tagsText);
+    if (tags === undefined) return setError("Tags must be key=value per line, or a JSON object.");
     setError(null);
     setProgress(0);
     try {
       const created = await createScan(
-        { video: file, model_name: model.trim() || undefined, truth_mm: truthNum, truth_min_mm: truthMinNum, reference_point: reference.trim() || undefined, notes: notes.trim() || undefined },
+        { video: file, model_name: model.trim() || undefined, truth_mm: truthNum, truth_min_mm: truthMinNum, reference_point: reference.trim() || undefined, notes: notes.trim() || undefined, tags },
         setProgress,
       );
       window.location.hash = href.run(created.id);
@@ -478,6 +681,7 @@ function NewRun() {
               className="w-full rounded-md border border-line bg-base/60 px-3 py-2 text-sm text-ink outline-none focus:border-accent"
             />
           </Field>
+          <TagsField value={tagsText} onChange={setTagsText} disabled={busy} />
 
           {error && <Notice tone="error">{error}</Notice>}
 
@@ -689,6 +893,11 @@ function RunDetail({ id }: { id: string }) {
             {job.attempts > 1 && <> · attempt {job.attempts}</>}
             {job.keyframe_count != null && <> · {job.keyframe_count} keyframes</>}
           </div>
+          {tagEntries(job.tags).length > 0 && (
+            <div className="mt-2">
+              <TagChips tags={job.tags} />
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <DlLink href={a.video_url} label="video" />
@@ -953,6 +1162,7 @@ function CaliperForm({ job, onSaved }: { job: AdminScanDetail; onSaved: (d: Admi
   const [truthMin, setTruthMin] = useState(job.truth_min_mm != null ? String(job.truth_min_mm) : "");
   const [reference, setReference] = useState(job.reference_point ?? DEFAULT_REFERENCE);
   const [notes, setNotes] = useState(job.notes ?? "");
+  const [tagsText, setTagsText] = useState(tagsToText(job.tags));
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ tone: "info" | "error"; text: string } | null>(null);
 
@@ -963,6 +1173,7 @@ function CaliperForm({ job, onSaved }: { job: AdminScanDetail; onSaved: (d: Admi
     setTruthMin(job.truth_min_mm != null ? String(job.truth_min_mm) : "");
     setReference(job.reference_point ?? DEFAULT_REFERENCE);
     setNotes(job.notes ?? "");
+    setTagsText(tagsToText(job.tags));
     setMsg(null);
   }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -971,7 +1182,9 @@ function CaliperForm({ job, onSaved }: { job: AdminScanDetail; onSaved: (d: Admi
     const truthNum = parseMm(truth);
     const truthMinNum = parseMm(truthMin);
     if (truthNum === undefined || truthMinNum === undefined) return setMsg({ tone: "error", text: "Truths must be numbers (mm)." });
-    const patch: PatchRunInput = { model_name: model.trim(), truth_mm: truthNum, truth_min_mm: truthMinNum, reference_point: reference.trim(), notes: notes.trim() };
+    const tags = parseTagsText(tagsText);
+    if (tags === undefined) return setMsg({ tone: "error", text: "Tags must be key=value per line, or a JSON object." });
+    const patch: PatchRunInput = { model_name: model.trim(), truth_mm: truthNum, truth_min_mm: truthMinNum, reference_point: reference.trim(), notes: notes.trim(), tags };
     setSaving(true);
     setMsg(null);
     try {
@@ -1012,6 +1225,7 @@ function CaliperForm({ job, onSaved }: { job: AdminScanDetail; onSaved: (d: Admi
             className="w-full rounded-md border border-line bg-base/60 px-3 py-2 text-sm text-ink outline-none focus:border-accent"
           />
         </Field>
+        <TagsField value={tagsText} onChange={setTagsText} disabled={saving} />
         {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
         <div className="flex justify-end">
           <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink disabled:opacity-40">

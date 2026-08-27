@@ -40,6 +40,7 @@ stoma-score-orientation = "app.verify.orientation:main"
 stoma-keyframe-sweep = "app.verify.keyframe_sweep:main"
 stoma-cycle-budget = "app.cycle_time:main"
 stoma-verification-report = "app.verify.report:main"
+stoma-bench = "app.bench:main"
 
 [build-system]
 requires = ["setuptools>=68"]

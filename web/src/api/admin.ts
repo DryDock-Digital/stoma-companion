@@ -5,6 +5,9 @@ import type { JobStatus } from "../lib/flow";
 
 export type { JobStatus };
 
+/** Free-form benchmark labels on a run, e.g. {group:"175mm", distance_mm:175, angle_deg:20}. */
+export type Tags = Record<string, string | number>;
+
 export interface AdminScanSummary {
   id: string;
   created_at: string;
@@ -31,6 +34,7 @@ export interface AdminScanSummary {
   engine: string | null;
   error: string | null;
   attempts: number;
+  tags: Tags | null;
 }
 
 export interface AdminTimings {
@@ -115,6 +119,7 @@ export interface NewRunInput {
   truth_min_mm?: number | null;
   reference_point?: string;
   notes?: string;
+  tags?: Tags;
 }
 
 export interface PatchRunInput {
@@ -125,6 +130,8 @@ export interface PatchRunInput {
   truth_min_mm?: number | null;
   reference_point?: string;
   notes?: string;
+  /** Replaces the whole tag set. */
+  tags?: Tags;
 }
 
 export interface CreatedRun {
@@ -249,6 +256,7 @@ export function createScan(input: NewRunInput, onProgress?: (fraction: number) =
   if (input.truth_min_mm != null && Number.isFinite(input.truth_min_mm)) form.append("truth_min_mm", String(input.truth_min_mm));
   if (input.reference_point) form.append("reference_point", input.reference_point);
   if (input.notes) form.append("notes", input.notes);
+  if (input.tags && Object.keys(input.tags).length) form.append("tags", JSON.stringify(input.tags));
 
   return new Promise<CreatedRun>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -285,4 +293,56 @@ export function describeError(err: unknown): string {
   if (err instanceof AdminApiError) return err.message;
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+// ---------------------------------------------------------------------------
+// Tags: `key=value` per line (or a JSON object) <-> Record<string, string|number>
+// ---------------------------------------------------------------------------
+
+/** Parses a tags textarea. Returns undefined when the text is not parseable. */
+export function parseTagsText(text: string): Tags | undefined {
+  const t = text.trim();
+  if (t === "") return {};
+  if (t.startsWith("{")) {
+    try {
+      const j = JSON.parse(t) as unknown;
+      if (!j || typeof j !== "object" || Array.isArray(j)) return undefined;
+      const out: Tags = {};
+      for (const [k, v] of Object.entries(j as Record<string, unknown>)) {
+        if (typeof v === "number" || typeof v === "string") out[k] = v;
+        else if (v != null) out[k] = JSON.stringify(v);
+      }
+      return out;
+    } catch {
+      return undefined;
+    }
+  }
+  const out: Tags = {};
+  for (const raw of t.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const i = line.indexOf("=");
+    if (i <= 0) return undefined;
+    const k = line.slice(0, i).trim();
+    const v = line.slice(i + 1).trim();
+    if (!k) return undefined;
+    const n = v === "" ? NaN : Number(v);
+    out[k] = Number.isFinite(n) ? n : v;
+  }
+  return out;
+}
+
+export function tagsToText(tags: Tags | null | undefined): string {
+  if (!tags) return "";
+  return Object.entries(tags)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+}
+
+/** [key, value] pairs with empty values dropped, for chip rendering. */
+export function tagEntries(tags: Tags | null | undefined): [string, string][] {
+  if (!tags) return [];
+  return Object.entries(tags)
+    .filter(([, v]) => v !== "" && v != null)
+    .map(([k, v]) => [k, String(v)]);
 }

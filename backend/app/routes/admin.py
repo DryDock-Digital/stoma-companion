@@ -10,6 +10,7 @@ reaches this under /admin and the patient flow never links to it.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -27,7 +28,7 @@ from .scans import get_app_settings, get_store, read_and_validate_upload, store_
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 #: config keys the engineer may set/correct on a job
-_TRUTH_KEYS = ("model_name", "truth_mm", "truth_min_mm", "reference_point", "notes")
+_TRUTH_KEYS = ("model_name", "truth_mm", "truth_min_mm", "reference_point", "notes", "tags")
 _DEFAULT_REFERENCE_POINT = "base at skin junction"
 
 
@@ -57,6 +58,8 @@ class AdminScanSummary(BaseModel):
     engine: str | None = None
     error: str | None = None
     attempts: int = 0
+    #: free-form benchmark attributes (distance, angle, light, phone, take, …)
+    tags: dict[str, Any] | None = None
 
 
 class AdminScanDetail(AdminScanSummary):
@@ -79,6 +82,7 @@ class TruthPatch(BaseModel):
     truth_min_mm: float | None = None
     reference_point: str | None = None
     notes: str | None = None
+    tags: dict[str, Any] | None = None
 
 
 # --- helpers ---------------------------------------------------------------
@@ -126,6 +130,7 @@ def _summary(job: Job) -> AdminScanSummary:
         engine=job.engine or res.get("engine"),
         error=job.error,
         attempts=job.attempts,
+        tags=cfg.get("tags") or None,
     )
 
 
@@ -229,10 +234,20 @@ async def admin_create_scan(
     truth_min_mm: float | None = Form(None),
     reference_point: str | None = Form(None),
     notes: str | None = Form(None),
+    tags: str | None = Form(None),
     store: JobStore = Depends(get_store),
     settings: Settings = Depends(get_app_settings),
 ) -> ScanCreated:
     data, content_type, receive_s = await read_and_validate_upload(video, settings)
+    tag_dict: dict[str, Any] | None = None
+    if tags:
+        try:
+            parsed = json.loads(tags)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(400, "tags must be a JSON object") from exc
+        if not isinstance(parsed, dict):
+            raise HTTPException(400, "tags must be a JSON object")
+        tag_dict = {str(k): v for k, v in parsed.items() if v not in (None, "")} or None
 
     config = {
         "keyframe_interval_seconds": settings.keyframe_interval_seconds,
@@ -244,6 +259,7 @@ async def admin_create_scan(
         "truth_min_mm": truth_min_mm,
         "reference_point": (reference_point or "").strip() or _DEFAULT_REFERENCE_POINT,
         "notes": (notes or "").strip() or None,
+        "tags": tag_dict,
         "source": "admin",
         "source_filename": video.filename,
     }
@@ -287,7 +303,14 @@ async def admin_patch_scan(
     for key in _TRUTH_KEYS:
         if key in provided:
             value = provided[key]
-            cfg[key] = None if isinstance(value, str) and not value.strip() else value
+            if key == "tags":
+                cfg[key] = (
+                    {str(k): v for k, v in value.items() if v not in (None, "")} or None
+                    if isinstance(value, dict)
+                    else None
+                )
+            else:
+                cfg[key] = None if isinstance(value, str) and not value.strip() else value
     job = store.update_job(job.id, config=cfg)
 
     # recompute deviation/pass on the stored result so the patient API agrees too
@@ -423,6 +446,7 @@ async def admin_rerun_scan(
         "truth_min_mm": cfg.get("truth_min_mm"),
         "reference_point": cfg.get("reference_point"),
         "notes": cfg.get("notes"),
+        "tags": cfg.get("tags"),
     }
     if options is not None:
         if options.keyframe_interval_seconds is not None:

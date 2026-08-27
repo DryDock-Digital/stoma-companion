@@ -220,3 +220,34 @@ def test_rerun_copies_video_and_truths():
         f"/admin/scans/{job_id}/rerun", json={"reconstruction": {"MESH_MODE": "points"}}
     )
     assert store.get_job(r.json()["id"]).config["reconstruction"] == {"MESH_MODE": "points"}
+
+
+def test_tags_round_trip_and_csv():
+    client, store, runs = _client()
+    r = client.post(
+        "/admin/scans",
+        files={"video": ("m1.mov", b"v", "video/quicktime")},
+        data={
+            "model_name": "M1",
+            "truth_mm": "32.8",
+            "tags": '{"group": "175mm", "angle_deg": 20, "light": ""}',
+        },
+    )
+    jid = r.json()["id"]
+    d = client.get(f"/admin/scans/{jid}").json()
+    assert d["tags"] == {"group": "175mm", "angle_deg": 20}  # empty values dropped
+    assert client.get("/admin/scans").json()["jobs"][0]["tags"]["angle_deg"] == 20
+    d = client.patch(f"/admin/scans/{jid}", json={"tags": {"group": "245mm", "take": "2"}}).json()
+    assert d["tags"] == {"group": "245mm", "take": "2"}
+    _measured(store, jid)
+    client.patch(f"/admin/scans/{jid}", json={"truth_min_mm": 31.2})
+    csv = client.get("/admin/report.csv").text
+    assert "group=245mm;take=2" in csv
+    assert (
+        client.post(
+            "/admin/scans",
+            files={"video": ("m.mov", b"v", "video/quicktime")},
+            data={"tags": "not json"},
+        ).status_code
+        == 400
+    )

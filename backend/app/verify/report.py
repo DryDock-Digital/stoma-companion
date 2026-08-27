@@ -37,6 +37,7 @@ CSV_FIELDS = [
     "method",
     "created_at",
     "notes",
+    "tags",
 ]
 
 
@@ -94,6 +95,8 @@ def to_csv(runs: list[RunRecord]) -> str:
     w.writeheader()
     for r in runs:
         row = r.model_dump(mode="json")
+        tags = (row.get("config") or {}).get("tags") or {}
+        row["tags"] = ";".join(f"{k}={v}" for k, v in tags.items())
         w.writerow({k: row.get(k, "") for k in CSV_FIELDS})
     return buf.getvalue()
 
