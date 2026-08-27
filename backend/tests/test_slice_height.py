@@ -94,34 +94,25 @@ def test_neck_rule_on_flat_profile_stays_near_junction():
     assert 2.0 <= base <= 7.5 and d[list(h).index(base)] == 33.0
 
 
-def test_tapering_stoma_base_is_first_stable_height_not_the_top_of_window():
-    """Figure-8 model: Ø drops 39→55?? no — Ø is flat from the fillet up and then tapers.
-    The base must be the first stable height (~1 mm), not 5 mm up where it is narrowest."""
+def test_knee_on_model1_profile():
+    """Model 1: fillet 39→33 over the first 2 mm, then flat → knee ≈ 2–2.5 mm."""
     from app.measure.slice_height import SliceHeightParams, base_height_from_profile
 
-    h = np.array(
-        [0.4, 0.7, 1.0, 1.3, 1.7, 2.0, 2.3, 2.6, 3.0, 3.3, 3.6, 4.0, 4.3, 4.6, 4.9, 5.3, 5.6]
-    )
-    d = np.array(
-        [
-            60.0,
-            54.8,
-            54.66,
-            54.72,
-            55.04,
-            54.88,
-            55.0,
-            54.8,
-            54.86,
-            54.61,
-            54.65,
-            54.65,
-            54.62,
-            54.5,
-            54.41,
-            54.22,
-            54.06,
-        ]
-    )
+    h = np.array([0.7, 1.3, 1.9, 2.5, 3.1, 3.7, 4.3, 4.9, 5.5, 6.1, 6.7, 7.3, 8.0])
+    d = np.array([39.4, 35.9, 33.7, 33.1, 33.1, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.6, 33.7])
     base = base_height_from_profile(h, d, SliceHeightParams())
-    assert base <= 1.7
+    assert 1.9 <= base <= 3.1
+
+
+def test_knee_uses_the_narrow_width_when_the_length_is_flat():
+    """Figure-8: the longest chord is flat through the fillet; the waist/widths
+    still flare. The knee must come from the narrow profile (~2–2.5 mm)."""
+    from app.measure.slice_height import SliceHeightParams, base_height_from_profile
+
+    h = np.array([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0])
+    longest = np.array([54.6, 55.0, 57.0, 56.4, 56.0, 55.7, 55.4, 54.7, 54.1, 53.4, 52.7])
+    narrow = np.array([37.6, 38.8, 34.2, 33.9, 33.4, 33.1, 32.8, 32.0, 31.6, 31.1, 30.6])
+    base = base_height_from_profile(h, longest, SliceHeightParams(), min_widths=narrow)
+    assert 1.9 <= base <= 3.0
+    # without the narrow profile the flat length gives no knee → stays low
+    assert base_height_from_profile(h, longest, SliceHeightParams()) <= 2.0

@@ -288,7 +288,7 @@ def measure_scan(
     if found is None:
         raise MeasureError("no stoma section found above the skin plane")
     axis, r_ref = found
-    prof_h, prof_d = polar_diameter_profile(
+    prof_h, prof_d, prof_min = polar_diameter_profile(
         roi_v,
         roi_f,
         normal,
@@ -297,8 +297,9 @@ def measure_scan(
         axis=axis,
         r_ref=r_ref,
         params=params.slice,
+        with_min_width=True,
     )
-    rel_h = base_height_from_profile(prof_h, prof_d, params.slice)
+    rel_h = base_height_from_profile(prof_h, prof_d, params.slice, min_widths=prof_min)
     if rel_h is None:
         raise MeasureError("no stoma section at any height above the skin plane")
     plane_h = floor_h + rel_h
@@ -408,6 +409,10 @@ def measure_scan(
             "diameter_profile": [
                 [round(float(h), 2), None if not np.isfinite(dd) else round(float(dd), 2)]
                 for h, dd in zip(prof_h, prof_d, strict=True)
+            ],
+            "min_width_profile": [
+                [round(float(h), 2), None if not np.isfinite(dd) else round(float(dd), 2)]
+                for h, dd in zip(prof_h, prof_min, strict=True)
             ],
             "roi_vertices": int(len(roi_v)),
             "input_kind": "point-cloud" if is_cloud else "mesh",

@@ -19,6 +19,7 @@ in constants: the junction rule is tuned against real geometry at P0-3.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -158,21 +159,42 @@ def stoma_axis(
 
 
 def polar_diameter_profile(
-    vertices, faces, normal, *, floor_h, max_h, axis, r_ref, params=DEFAULT_PARAMS
+    vertices,
+    faces,
+    normal,
+    *,
+    floor_h,
+    max_h,
+    axis,
+    r_ref,
+    params=DEFAULT_PARAMS,
+    with_min_width: bool = False,
 ):
-    """(heights_above_floor, Ø or nan): the topology-free stoma profile."""
+    """(heights_above_floor, Ø or nan[, narrowest width or nan]): the topology-free
+    stoma profile. Ø is the longest chord; the narrowest caliper width is what
+    actually changes through the skin fillet on elongated stomas (a figure-8's
+    length is flat while its waist and lobes still flare), so the base-height rule
+    uses it when available."""
+    from .shape import caliper_width
+
     span = max(max_h - floor_h, 1e-6)
     top = floor_h + max(params.profile_span_frac, params.end_trim_frac * 2) * span
     heights = np.linspace(
         floor_h + params.end_trim_frac * span, top - params.end_trim_frac * span, params.n_levels
     )
-    out = []
+    out, mins = [], []
+    angles = np.deg2rad(np.arange(0, 180, 5.0))
     for h in heights:
         pts = section_points(vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=h)
         est = "mode" if _is_cloud(faces) else "median"
         o = slicing.polar_section_outline(pts, axis, r_ref, estimator=est) if len(pts) else None
         out.append(float("nan") if o is None else slicing.max_planar_chord_length(o))
-    return heights - floor_h, np.array(out)
+        if with_min_width:
+            mins.append(float("nan") if o is None else min(caliper_width(o, a) for a in angles))
+    rel = heights - floor_h
+    if with_min_width:
+        return rel, np.array(out), np.array(mins)
+    return rel, np.array(out)
 
 
 def diameter_profile(
@@ -241,42 +263,66 @@ def _junction_height(heights: np.ndarray, areas: np.ndarray, drop_frac: float) -
     return None
 
 
-def base_height_from_profile(heights, diameters, params: SliceHeightParams = DEFAULT_PARAMS):
-    """Base slice height from the Ø-vs-height profile.
+def base_height_from_profile(
+    heights, diameters, params: SliceHeightParams = DEFAULT_PARAMS, min_widths=None
+):
+    """Base slice height from the profile.
 
-    1. The skin→stoma junction is the largest downward step in Ø going up from the
-       floor (skin/mat flare → stoma). With no clear step, the lowest valid level.
-    2. The base is the **neck**: the narrowest section within
-       [junction + margin_mm, junction + neck_window_mm] on a lightly smoothed
-       profile — what calipers close on at the skin. A fixed "junction + 1 mm" landed
-       on the fillet where Ø still falls ~4 mm/mm, and two reconstructions of the same
-       video disagreed by 1.3 mm there while agreeing within 0.1 mm at the neck.
+    1. The skin→stoma junction is the largest downward step going up from the floor
+       (skin/mat flare → stoma). With no clear step, the lowest valid level.
+    2. The base is the **knee** just above it: where the fillet's steep drop ends and
+       the stoma body begins, found on the narrowest-width profile when given (the
+       longest chord of an elongated stoma barely changes through the fillet) —
+       Kneedle-style, the point of maximum distance from the chord joining the ends
+       of the [junction + margin, junction + window] segment, on a smoothed profile.
+       A fixed "junction + 1 mm" landed on the fillet; "narrowest in the window" walked
+       a tapering stoma up to the top of the window.
     """
-    valid = np.isfinite(diameters)
-    if not valid.any():
+    diam = np.asarray(diameters, dtype=float)
+    dvalid = np.isfinite(diam)
+    if not dvalid.any():
         return None
-    h, d = heights[valid], diameters[valid]
-    steps = d[:-1] - d[1:]
+    # junction: on the longest-chord profile (the skin/mat flare shows there)
+    hj, dj = heights[dvalid], diam[dvalid]
+    steps = dj[:-1] - dj[1:]
     j = int(np.argmax(steps)) if len(steps) else 0
     junction = (
-        float(h[j + 1])
-        if len(steps) and steps[j] > params.junction_drop_frac * np.nanmax(d)
-        else float(h[0])
+        float(hj[j + 1])
+        if len(steps) and steps[j] > params.junction_drop_frac * np.nanmax(dj)
+        else float(hj[0])
     )
+    # knee: on the narrowest-width profile when available (it keeps changing through
+    # the fillet on elongated stomas whose length is already flat)
+    prof = diam
+    if min_widths is not None:
+        mw = np.asarray(min_widths, dtype=float)
+        if np.isfinite(mw).sum() >= 4:
+            prof = mw
+    valid = np.isfinite(prof)
+    h, d = heights[valid], prof[valid]
     lo, hi = junction + params.margin_mm, junction + params.neck_window_mm
     window = (h >= lo) & (h <= hi)
     if not window.any():
         return min(lo, float(h[-1]))
     smooth = np.convolve(np.pad(d, 1, mode="edge"), np.ones(3) / 3, mode="valid")
     idx = np.flatnonzero(window)
-    # First stable point: the fillet is a steep drop; once |slope| is small we are on
-    # the stoma proper. Taking the *minimum* instead walked up a tapering stoma to the
-    # top of the window (5.6 mm on the figure-8 model) and under-read its widths.
-    slope = np.gradient(smooth, h)
-    for i in idx:
-        if abs(slope[i]) <= params.stable_slope_mm_per_mm:
-            return float(h[i])
-    return float(h[idx[int(np.argmin(smooth[idx]))]])
+    if len(idx) < 3:
+        return float(h[idx[0]])
+    x, y = h[idx], smooth[idx]
+    # knee: max perpendicular distance from the chord between the segment's ends,
+    # only counted where the profile still falls (a rising profile has no fillet)
+    x0, y0, x1, y1 = x[0], y[0], x[-1], y[-1]
+    if abs(y0 - y1) < 0.3:  # flat already: the fillet ended before the window
+        return float(x[0])
+    dx, dy = x1 - x0, y1 - y0
+    norm = math.hypot(dx, dy) or 1.0
+    dist = np.abs(dy * (x - x0) - dx * (y - y0)) / norm
+    # the knee is where the curve bows *below* the chord (steep then flat)
+    below = (dy * (x - x0) - dx * (y - y0)) * np.sign(dy) < 0
+    if not below.any():
+        return float(x[0])
+    k = int(np.argmax(np.where(below, dist, -1)))
+    return float(x[k])
 
 
 def auto_slice_height(
