@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from . import paths
 from .cycle_time import StageTimer
-from .errors import failure_fields
+from .errors import StageTimeout, failure_fields
 from .models import Job, JobStatus
 from .store import JobStore
 
@@ -299,18 +299,24 @@ class ReconstructionWorker(_Poller):
                         _download_keyframes(self.store, job, keyframe_dir)
                 with timer.stage("reconstruct"):
                     options = (job.config or {}).get("reconstruction") or None
-                    out = self._reconstruct(keyframe_dir, work_dir, options)
-                    # Low-texture scenes (plain sheets, glossy mat) can leave SfM with
-                    # a handful of registered frames. Once, re-extract at 2x density
-                    # and try again — cheaper than a failed scan for the patient.
                     n_in = len(list(keyframe_dir.glob("frame_*.jpg")))
-                    if (
-                        self.extract_keyframes
-                        and job.video_path
-                        and n_in
-                        and len(out.cameras) < self.min_registered_frac * n_in
+                    can_retry = bool(self.extract_keyframes and job.video_path and n_in)
+                    first_error: Exception | None = None
+                    try:
+                        out = self._reconstruct(keyframe_dir, work_dir, options)
+                    except StageTimeout:
+                        raise
+                    except Exception as exc:  # noqa: BLE001 — e.g. "no initial pair"
+                        if not can_retry:
+                            raise
+                        first_error, out = exc, None
+                    # Low-texture scenes (plain sheets, glossy mat) can leave SfM with
+                    # no model or a handful of registered frames. Once, re-extract at
+                    # 2x density and try again — cheaper than a failed scan.
+                    if can_retry and (
+                        out is None or len(out.cameras) < self.min_registered_frac * n_in
                     ):
-                        first = len(out.cameras)
+                        first = 0 if out is None else len(out.cameras)
                         log.warning(
                             "job %s: only %d/%d frames registered — retrying at 2x keyframes",
                             job.id,
@@ -325,6 +331,7 @@ class ReconstructionWorker(_Poller):
                         out = self._reconstruct(keyframe_dir, work_dir2, options)
                         out.diagnostics["sfm_retry"] = {
                             "first_registered": first,
+                            "first_error": None if first_error is None else str(first_error)[:200],
                             "first_keyframes": n_in,
                             "keyframes_after": len(list(keyframe_dir.glob("frame_*.jpg"))),
                             "registered_after": len(out.cameras),

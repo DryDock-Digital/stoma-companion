@@ -477,3 +477,39 @@ def test_poor_registration_retries_at_double_density(monkeypatch):
     done = store.get_job(job.id)
     assert done.status == JobStatus.MEASURED and done.keyframe_count == 20
     assert done.result["reconstruction"]["sfm_retry"]["registered_after"] == 20
+
+
+def test_no_model_failure_also_retries(monkeypatch):
+    from app import keyframes as kf
+    from app.errors import StageError
+
+    store = InMemoryJobStore()
+    job = store.create_job(config={"keyframe_target_frames": 10})
+    store.put_object(paths.video_key(job.id), b"v", "video/mp4")
+    store.update_job(job.id, video_path=paths.video_key(job.id))
+
+    def fake_extract(video_path, out_dir, params, **kw):
+        out_dir.mkdir(parents=True, exist_ok=True)
+        frames = []
+        for i in range(params.target_frames):
+            f = out_dir / f"frame_{i:05d}.jpg"
+            f.write_bytes(b"jpg")
+            frames.append(f)
+        return kf.KeyframeResult(count=len(frames), frame_paths=frames, calibration_path=None)
+
+    monkeypatch.setattr(kf, "extract_keyframes", fake_extract)
+
+    class NoModelFirst(FakeReconstructor):
+        calls = 0
+
+        def reconstruct(self, keyframe_dir, work_dir, options=None):
+            NoModelFirst.calls += 1
+            if NoModelFirst.calls == 1:
+                raise StageError("Failed to create any sparse model", stage="reconstruct")
+            return super().reconstruct(keyframe_dir, work_dir)
+
+    w = ReconstructionWorker(store, NoModelFirst(), worker_id="w1", measurer=FakeMeasurer())
+    assert w.run_once() is True
+    done = store.get_job(job.id)
+    assert done.status == JobStatus.MEASURED and done.keyframe_count == 20
+    assert "sparse model" in done.result["reconstruction"]["sfm_retry"]["first_error"]
