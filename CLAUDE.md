@@ -3,6 +3,7 @@
 Stoma measuring & automated wafer cutting system for TACKLE Medical (Cole Fields).
 DryDock engagement per **docs/PRD v0.2 (signed 2026-08-21).pdf** — investor-demo scope only.
 Phase plan: [docs/PLAN.md](docs/PLAN.md) · Tickets: [TASKS.md](TASKS.md) · Decisions: [docs/decisions.md](docs/decisions.md)
+**Start here in a new session: [docs/STATUS.md](docs/STATUS.md)** — live hosts, deploy commands, accuracy results, what's blocked on whom.
 
 ## What the demo must prove
 
