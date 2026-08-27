@@ -448,6 +448,8 @@ def polar_section_outline(
     min_filled_frac: float = 0.6,
     r_tol_frac: float = 0.45,
     r_tol_min: float = 5.0,
+    estimator: str = "median",
+    mode_bin: float = 0.25,
 ) -> np.ndarray | None:
     """Topology-free section outline: median radius of the section points per
     angular bin around `axis`, restricted to points whose radius is near `r_ref`
@@ -470,7 +472,21 @@ def polar_section_outline(
     idx = np.floor((ang + math.pi) / (2 * math.pi) * bins).astype(int).clip(0, bins - 1)
     med = np.full(bins, np.nan)
     for b in np.unique(idx):
-        med[b] = np.median(r[idx == b])
+        rb = r[idx == b]
+        if estimator == "mode" and len(rb) >= 8:
+            # dense point clouds carry a diffuse halo of outliers *outside* the
+            # surface (silhouette fattening); the median drifts outward, the
+            # densest radius does not. Histogram at `mode_bin`, 3-tap smoothed.
+            edges = np.arange(rb.min(), rb.max() + 2 * mode_bin, mode_bin)
+            hist, _ = np.histogram(rb, bins=edges)
+            if len(hist) >= 3:
+                hist = np.convolve(hist, np.ones(3) / 3, mode="same")
+            k = int(np.argmax(hist))
+            lo, hi = edges[k] - mode_bin, edges[k] + 2 * mode_bin
+            core = rb[(rb >= lo) & (rb <= hi)]
+            med[b] = float(np.median(core)) if len(core) else float(np.median(rb))
+        else:
+            med[b] = np.median(rb)
     filled = np.isfinite(med)
     if filled.sum() < min_filled_frac * bins:
         return None

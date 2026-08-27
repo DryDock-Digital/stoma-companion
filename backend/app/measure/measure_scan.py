@@ -329,7 +329,9 @@ def measure_scan(
         from .slice_height import section_points
 
         pts = section_points(roi_v, roi_f, normal, floor_h=floor_h, max_h=max_h, plane_h=plane_h)
-        outline = slicing.polar_section_outline(pts, axis, r_ref)
+        outline = slicing.polar_section_outline(
+            pts, axis, r_ref, estimator="mode" if is_cloud else "median"
+        )
         if outline is None:
             raise MeasureError("no stoma section at the base height") from None
         au, av = slicing.slice_basis(normal)

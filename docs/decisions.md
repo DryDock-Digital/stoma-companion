@@ -26,6 +26,13 @@ card**, not the largest: the more complete CUDA mesh included a table edge 100 m
 the largest-cluster rule measured it (44 mm). With both: three full-res GPU runs read
 32.94–32.99 / 30.30–30.46 mm. Caliper truth for this model is still pending.
 Every run now records its engine settings and per-step seconds in `diagnostics`.
+**Point-cloud mode (added later the same day).** `MESH_MODE=points` skips ReconstructMesh and
+measures polar sections of the dense cloud directly: 87 frames 113 s, 44 frames **50 s**,
+31 frames **37 s**. But the cloud carries a halo of outliers outside the surface
+(silhouette fattening) that meshing filters and a section estimator does not: readings
+come out ~+1 mm wider than mesh mode at every height (per-bin mode instead of median and
+a 1 mm slab tame the jaggedness, not the bias). Mesh mode stays the default; points mode
+is kept as an option the caliper sweep can judge. Mesh mode at 31 frames is already 56 s.
 
 ## D17 — 2026-08-26 · First real video: the printed cards are bit-inverted ArUco; real-mesh robustness
 Aaron's first real capture (27 mm card, stoma model) went through the whole system and

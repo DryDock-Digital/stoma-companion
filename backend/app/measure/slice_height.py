@@ -92,7 +92,7 @@ def _segments(vertices, faces, normal, *, floor_h, max_h, plane_h):
 
 
 #: half-thickness of the slab of points that forms a point-cloud section (mm)
-CLOUD_BAND_MM = 0.4
+CLOUD_BAND_MM = 1.0
 
 
 def _is_cloud(faces) -> bool:
@@ -167,7 +167,8 @@ def polar_diameter_profile(
     out = []
     for h in heights:
         pts = section_points(vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=h)
-        o = slicing.polar_section_outline(pts, axis, r_ref) if len(pts) else None
+        est = "mode" if _is_cloud(faces) else "median"
+        o = slicing.polar_section_outline(pts, axis, r_ref, estimator=est) if len(pts) else None
         out.append(float("nan") if o is None else slicing.max_planar_chord_length(o))
     return heights - floor_h, np.array(out)
 
