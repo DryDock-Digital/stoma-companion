@@ -3,6 +3,22 @@
 One line of context per decision. Add new entries at the top, dated. Don't
 relitigate settled entries in build sessions — reopen them with Aaron/Blake first.
 
+## D19 — 2026-08-27 · First caliper-graded sweep: mesh mode at ~40 frames is the production setting
+Aaron's calipers on Model 1: widest **32.8**, narrowest **31.2** mm (base at skin junction).
+Twelve runs of the same video graded on the bench:
+- **Mesh mode passes at every frame count** — 44 frames +0.17/−0.19 mm (83 s to measured),
+  31 frames +0.12/+0.24 (56 s), 87 frames +0.14/−0.75 (159 s; more views thin the narrow
+  flank, still in tolerance but with little margin).
+- **Points mode fails** at 44 and 87 frames on the widest reading (+2.4/+1.7 mm) — the
+  dense-cloud halo bias confirmed against calipers; passes only marginally at 31 frames.
+- Three historical fails are pre-fix runs (wrong-axis bug, fillet slice, original CPU code).
+Decision: **mesh mode, ~40 keyframes spread over the clip** (`KEYFRAME_TARGET_FRAMES=40`;
+the schedule now scales its interval to the clip length instead of truncating a long
+orbit with a cap), full resolution, on the GPU worker. Expected upload→measured ≈ 60–85 s
+for a 15–30 s clip; the admin "total" now excludes the post-measurement keyframe archive.
+One model is not the gate (P1-5 needs ≥ 3 models × 3 takes) — it sets the defaults the
+rest of the campaign runs with.
+
 ## D18 — 2026-08-26 · GPU worker live (RTX 6000 Ada): OpenMVS-CUDA dense, neck-based base, card-anchored axis
 The client's GPU host (134.122.35.141, RTX 6000 Ada 48 GB) now runs the reconstruction
 worker (`WORKER_HOST`, CUDA image); the CPU worker on the API droplet is stopped and kept

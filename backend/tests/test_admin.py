@@ -42,7 +42,7 @@ def _measured(store, job_id, diameter=33.4):
             "wafer_outline_mm": [[0, 0]],
             "orientation_method": "aruco+ransac",
             "gcode": "should never leak",
-            "timings_s": {"extract": 30.0, "reconstruct": 900.0, "measure": 9.0},
+            "timings_s": {"extract": 30.0, "reconstruct": 900.0, "measure": 9.0, "archive": 50.0},
             "diagnostics": {"diameter_profile": [[1.0, 39.1], [2.0, 33.0]]},
         },
     )

@@ -232,9 +232,11 @@ class ReconstructionWorker(_Poller):
         from .keyframes import KeyframeParams, extract_keyframes
 
         cfg = job.config or {}
+        target = int(cfg.get("keyframe_target_frames") or 0) or None
         params = KeyframeParams(
             interval_seconds=float(cfg.get("keyframe_interval_seconds", 0.35)),
             max_frames=int(cfg.get("keyframe_max_frames", 350)),
+            target_frames=target,
         )
         video = tmp_dir / "input.bin"
         with timer.stage("download"):

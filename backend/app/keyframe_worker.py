@@ -22,6 +22,7 @@ def main() -> None:
         KeyframeParams(
             interval_seconds=settings.keyframe_interval_seconds,
             max_frames=settings.keyframe_max_frames,
+            target_frames=settings.keyframe_target_frames or None,
         ),
         worker_id=os.environ.get("WORKER_ID", "keyframes-1"),
         claim_timeout_s=settings.claim_timeout_s,

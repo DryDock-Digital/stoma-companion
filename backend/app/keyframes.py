@@ -82,6 +82,15 @@ class KeyframeParams:
     max_frames: int = DEFAULT_FRAME_CAP
     jpeg_quality: float = DEFAULT_JPEG_QUALITY
     max_dimension: int = MAX_DIMENSION
+    #: when set, the interval is chosen so ~this many frames span the *whole* clip
+    #: (a fixed interval + cap would truncate a long orbit instead of thinning it).
+    #: The caliper sweep put the accuracy/speed sweet spot at ~40 frames (D19).
+    target_frames: int | None = None
+
+    def interval_for(self, duration_seconds: float) -> float:
+        if self.target_frames and self.target_frames > 0 and duration_seconds > 0:
+            return clamp_interval(duration_seconds / self.target_frames)
+        return self.interval_seconds
 
 
 @dataclass
@@ -182,7 +191,7 @@ def _extract_all_single_pass(
     nearest t = 0, interval, 2·interval … — exactly `sample_times()` — capped at
     len(times). ~10× faster than one seek+decode process per frame (36 s → ~3 s on
     the first real 30 s clip)."""
-    interval = clamp_interval(params.interval_seconds)
+    interval = clamp_interval(params.interval_for(probe_duration(video_path)))
     pattern = output_dir / "frame_%05d.jpg"
     result = subprocess.run(
         [
@@ -230,7 +239,8 @@ def extract_keyframes(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     duration = probe_duration(video_path)
-    times = sample_times(duration, params.interval_seconds, params.max_frames)
+    interval = params.interval_for(duration)
+    times = sample_times(duration, interval, params.max_frames)
     if not times:
         raise KeyframeError("Interval is too long for this video length.")
 

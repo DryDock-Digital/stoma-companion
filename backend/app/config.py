@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # --- Keyframe extraction (ported VideoFrameExporter defaults) ---
     keyframe_interval_seconds: float = 0.35
     keyframe_max_frames: int = 350
+    #: spread ~this many frames over the clip (0 = fixed interval). ~40 is the
+    #: accuracy/speed sweet spot from the caliper sweep (D19).
+    keyframe_target_frames: int = 40
 
     #: keyframes kept in storage after a run (thumbnails / fixtures). The full set is
     #: archived after measurement, off the critical path.

@@ -85,3 +85,15 @@ def test_single_pass_matches_schedule(tmp_path):
     expected = kf.sample_times(kf.probe_duration(clip), 0.35, 350)
     assert fast.count == slow.count == len(expected)
     assert fast.calibration_path is not None
+
+
+def test_target_frames_spreads_the_schedule():
+    from app import keyframes as kf
+
+    p = kf.KeyframeParams(target_frames=40)
+    assert len(kf.sample_times(15.0, p.interval_for(15.0), 350)) in (40, 41)
+    assert len(kf.sample_times(30.0, p.interval_for(30.0), 350)) in (40, 41)
+    # legacy behaviour untouched without a target
+    assert kf.KeyframeParams().interval_for(30.0) == 0.35
+    # very short clips hit the interval floor, never zero
+    assert kf.KeyframeParams(target_frames=400).interval_for(3.0) == kf.MIN_INTERVAL_SECONDS

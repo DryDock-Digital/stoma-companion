@@ -91,6 +91,7 @@ def create_app(
             KeyframeParams(
                 interval_seconds=settings.keyframe_interval_seconds,
                 max_frames=settings.keyframe_max_frames,
+                target_frames=settings.keyframe_target_frames or None,
             ),
             claim_timeout_s=settings.claim_timeout_s,
             max_attempts=settings.max_attempts,

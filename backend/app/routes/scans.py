@@ -92,6 +92,7 @@ async def create_scan(
         config={
             "keyframe_interval_seconds": settings.keyframe_interval_seconds,
             "keyframe_max_frames": settings.keyframe_max_frames,
+            "keyframe_target_frames": settings.keyframe_target_frames,
             **settings.measure_config(),
         }
     )

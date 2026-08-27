@@ -106,7 +106,7 @@ def _summary(job: Job) -> AdminScanSummary:
     res = job.result or {}
     tol = float(cfg.get("tolerance_mm", res.get("tolerance_mm", 1.0)))
     dev, dev_min, within = _deviations(res, cfg, tol)
-    timings = res.get("timings_s") or {}
+    timings = {k: v for k, v in (res.get("timings_s") or {}).items() if k != "archive"}
     return AdminScanSummary(
         id=job.id,
         created_at=job.created_at,
@@ -142,7 +142,10 @@ def _detail(job: Job, store: JobStore, run_store: RunStore) -> AdminScanDetail:
     summary = _summary(job)
     res = dict(job.result or {})
     res.pop("gcode", None)
-    report = CycleReport.from_job_result(job.result)
+    # the keyframe archive runs after the job is `measured` — not part of the cycle
+    report = CycleReport.from_dict(
+        {k: v for k, v in ((job.result or {}).get("timings_s") or {}).items() if k != "archive"}
+    )
     keyframes: list[str] = []
     if job.keyframes_prefix:
         try:
@@ -234,6 +237,7 @@ async def admin_create_scan(
     config = {
         "keyframe_interval_seconds": settings.keyframe_interval_seconds,
         "keyframe_max_frames": settings.keyframe_max_frames,
+        "keyframe_target_frames": settings.keyframe_target_frames,
         **settings.measure_config(),
         "model_name": (model_name or "").strip() or None,
         "truth_mm": truth_mm,
@@ -380,6 +384,8 @@ class RerunOptions(BaseModel):
 
     keyframe_interval_seconds: float | None = None
     keyframe_max_frames: int | None = None
+    #: 0 → fixed interval (sweeps by interval); N → spread N frames over the clip
+    keyframe_target_frames: int | None = None
     notes: str | None = None
     #: engine knobs for this run only, e.g. {"MESH_MODE": "points", "MVS_RESOLUTION_LEVEL": 2}
     reconstruction: dict[str, Any] | None = None
@@ -409,6 +415,7 @@ async def admin_rerun_scan(
         **settings.measure_config(),  # current knobs; truths/model carry over
         "keyframe_interval_seconds": settings.keyframe_interval_seconds,
         "keyframe_max_frames": settings.keyframe_max_frames,
+        "keyframe_target_frames": settings.keyframe_target_frames,
         "source": "rerun",
         "rerun_of": src.id,
         "model_name": cfg.get("model_name"),
@@ -420,6 +427,10 @@ async def admin_rerun_scan(
     if options is not None:
         if options.keyframe_interval_seconds is not None:
             config["keyframe_interval_seconds"] = float(options.keyframe_interval_seconds)
+            if options.keyframe_target_frames is None:
+                config["keyframe_target_frames"] = 0  # an explicit interval means fixed
+        if options.keyframe_target_frames is not None:
+            config["keyframe_target_frames"] = int(options.keyframe_target_frames)
         if options.keyframe_max_frames is not None:
             config["keyframe_max_frames"] = int(options.keyframe_max_frames)
         if options.notes is not None:
