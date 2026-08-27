@@ -35,8 +35,8 @@ class SliceHeightParams:
     #: … and up to this far above it: the base is the first section in that window
     #: where the profile has stopped changing (the fillet is over), else the narrowest
     neck_window_mm: float = 5.0
-    #: |dØ/dh| below this (mm per mm) counts as "stopped changing"
-    stable_slope_mm_per_mm: float = 0.35
+    #: sections wider than the body reference by this fraction are skin flare
+    flare_frac: float = 0.05
     #: a downward area step must exceed this fraction of the max area to count as
     #: the skin→stoma junction; otherwise fall back to the widest section
     junction_drop_frac: float = 0.2
@@ -291,6 +291,16 @@ def base_height_from_profile(
         if len(steps) and steps[j] > params.junction_drop_frac * np.nanmax(dj)
         else float(hj[0])
     )
+    # a shallow flare (< junction_drop_frac) still means "skin": anything wider than
+    # the body reference by flare_frac counts as below the junction
+    body = dj[(hj >= hj[0] + 2.0) & (hj <= hj[0] + 8.0)]
+    if len(body) >= 3:
+        ref = float(np.median(body))
+        flared = np.flatnonzero(dj > (1 + params.flare_frac) * ref)
+        if len(flared):
+            k = int(flared[-1])
+            if k + 1 < len(hj):
+                junction = max(junction, float(hj[k + 1]))
     # knee: on the narrowest-width profile when available (it keeps changing through
     # the fillet on elongated stomas whose length is already flat)
     prof = diam
