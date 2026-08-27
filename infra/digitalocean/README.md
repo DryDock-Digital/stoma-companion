@@ -51,6 +51,11 @@ ports and no Caddy. Once it is claiming jobs, stop the CPU worker on the API box
 overlap is harmless. If the base image's CUDA is newer than the host driver
 (`nvidia-smi` shows the max supported CUDA), pin an older `COLMAP_TAG` build arg.
 
+**Disaster recovery.** With `WORKER_REGISTRY` set in `.env`, every deploy also pushes the
+built image (`:<git-sha>` and `:latest`). A replacement host is then:
+`gpu-host-setup.sh` → `WORKER_HOST=<ip> WORKER_DOCKERFILE=Dockerfile PULL_ONLY=1 ./infra/deploy-worker.sh`
+(a pull, ~2 min) instead of a 35-minute compile. `IMAGE_TAG=<sha>` pins a specific build.
+
 Speed knobs live in `.env` (`COLMAP_MAX_IMAGE_SIZE`, `MVS_RESOLUTION_LEVEL`, …, see
 `.env.example`); every run records the values it used in its diagnostics, and the
 sweep that chose the defaults is in `docs/decisions.md` (D18).
