@@ -438,3 +438,42 @@ def test_reconstruction_options_reach_the_engine():
 
     ReconstructionWorker(store, Engine(), worker_id="w1").run_once()
     assert seen == {"MESH_MODE": "points"}
+
+
+def test_poor_registration_retries_at_double_density(monkeypatch):
+    from app import keyframes as kf
+
+    store = InMemoryJobStore()
+    job = store.create_job(config={"keyframe_target_frames": 10})
+    store.put_object(paths.video_key(job.id), b"fake-video", "video/mp4")
+    store.update_job(job.id, video_path=paths.video_key(job.id))
+    extractions = []
+
+    def fake_extract(video_path, out_dir, params, **kw):
+        extractions.append(params.target_frames)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        frames = []
+        for i in range(params.target_frames):
+            f = out_dir / f"frame_{i:05d}.jpg"
+            f.write_bytes(b"jpg")
+            frames.append(f)
+        return kf.KeyframeResult(count=len(frames), frame_paths=frames, calibration_path=None)
+
+    monkeypatch.setattr(kf, "extract_keyframes", fake_extract)
+
+    class Weak(FakeReconstructor):
+        calls = 0
+
+        def reconstruct(self, keyframe_dir, work_dir, options=None):
+            Weak.calls += 1
+            out = super().reconstruct(keyframe_dir, work_dir)
+            if Weak.calls == 1:  # first pass registers 2 of 10
+                out.cameras = dict(list(out.cameras.items())[:2])
+            return out
+
+    w = ReconstructionWorker(store, Weak(), worker_id="w1", measurer=FakeMeasurer())
+    assert w.run_once() is True
+    assert extractions == [10, 20]  # retried at 2x
+    done = store.get_job(job.id)
+    assert done.status == JobStatus.MEASURED and done.keyframe_count == 20
+    assert done.result["reconstruction"]["sfm_retry"]["registered_after"] == 20

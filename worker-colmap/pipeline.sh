@@ -26,6 +26,9 @@ mkdir -p "$SPARSE" "$DENSE" "$MVS"
 USE_GPU="${COLMAP_USE_GPU:-1}"                 # 1 on the CUDA image, 0 on the CPU image
 MAX_IMAGE_SIZE="${COLMAP_MAX_IMAGE_SIZE:-1600}" # SIFT + undistorted image longest edge
 MAX_FEATURES="${COLMAP_MAX_FEATURES:-4096}"
+PEAK_THRESHOLD="${COLMAP_PEAK_THRESHOLD:-0.004}"  # SIFT DoG peak; default 0.0067 — lower = more features on low-texture skin/mat
+INIT_MIN_INLIERS="${COLMAP_INIT_MIN_INLIERS:-50}" # mapper init pair (default 100); low-texture orbits need the slack
+MIN_NUM_MATCHES="${COLMAP_MIN_NUM_MATCHES:-10}"   # mapper (default 15)
 SEQ_OVERLAP="${COLMAP_SEQ_OVERLAP:-10}"        # frames come from one continuous orbit
 DENSE_ENGINE="${DENSE_ENGINE:-auto}"           # colmap (CUDA patch-match) | openmvs | auto
 MVS_RES_LEVEL="${MVS_RESOLUTION_LEVEL:-2}"     # 0 = full res, each level halves
@@ -68,7 +71,8 @@ colmap feature_extractor \
   --ImageReader.single_camera 1 \
   "$OPT_EXTRACT_GPU" "$USE_GPU" \
   "$OPT_EXTRACT_MAXSIZE" "$MAX_IMAGE_SIZE" \
-  --SiftExtraction.max_num_features "$MAX_FEATURES"
+  --SiftExtraction.max_num_features "$MAX_FEATURES" \
+  --SiftExtraction.peak_threshold "$PEAK_THRESHOLD"
 
 tick features
 echo "[colmap] sequential matching"
@@ -76,6 +80,7 @@ colmap sequential_matcher \
   --database_path "$DB" \
   "$OPT_MATCH_GPU" "$USE_GPU" \
   --SequentialMatching.overlap "$SEQ_OVERLAP" \
+  --SequentialMatching.quadratic_overlap 1 \
   --SequentialMatching.loop_detection 0
 
 tick matching
@@ -84,7 +89,10 @@ colmap mapper \
   --database_path "$DB" \
   --image_path "$IMAGE_DIR" \
   --output_path "$SPARSE" \
-  --Mapper.ba_global_max_num_iterations 25
+  --Mapper.ba_global_max_num_iterations 25 \
+  --Mapper.init_min_num_inliers "$INIT_MIN_INLIERS" \
+  --Mapper.min_num_matches "$MIN_NUM_MATCHES" \
+  --Mapper.multiple_models 0
 
 tick mapper
 MODEL="$SPARSE/0"

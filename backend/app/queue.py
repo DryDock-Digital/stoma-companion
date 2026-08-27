@@ -210,6 +210,8 @@ class ReconstructionWorker(_Poller):
         #: after measurement, push the full keyframe set to storage (thumbnails,
         #: fixtures, the standalone MeasurementWorker) — off the critical path
         self.archive_keyframes = archive_keyframes
+        #: retry once at 2x keyframes when fewer than this fraction of frames register
+        self.min_registered_frac = 0.5
 
     def claim(self) -> Job | None:
         """Atomically take the next job: `keyframes_ready` first (already
@@ -227,20 +229,39 @@ class ReconstructionWorker(_Poller):
             )
         return job
 
-    def _extract_locally(self, job: Job, keyframe_dir: Path, tmp_dir: Path, timer) -> Job:
-        """pending → extracting → (frames on local disk) → reconstructing."""
+    def _reconstruct(self, keyframe_dir: Path, work_dir: Path, options):
+        if options:
+            return self.reconstructor.reconstruct(keyframe_dir, work_dir, options)
+        return self.reconstructor.reconstruct(keyframe_dir, work_dir)
+
+    def _extract_locally(
+        self,
+        job: Job,
+        keyframe_dir: Path,
+        tmp_dir: Path,
+        timer,
+        *,
+        density: float = 1.0,
+        clean: bool = False,
+    ) -> Job:
+        """pending → extracting → (frames on local disk) → reconstructing.
+        `density` > 1 multiplies the keyframe count (SfM retry)."""
         from .keyframes import KeyframeParams, extract_keyframes
 
         cfg = job.config or {}
         target = int(cfg.get("keyframe_target_frames") or 0) or None
         params = KeyframeParams(
-            interval_seconds=float(cfg.get("keyframe_interval_seconds", 0.35)),
+            interval_seconds=float(cfg.get("keyframe_interval_seconds", 0.35)) / density,
             max_frames=int(cfg.get("keyframe_max_frames", 350)),
-            target_frames=target,
+            target_frames=None if target is None else int(round(target * density)),
         )
+        if clean:
+            for f in keyframe_dir.glob("*.jpg"):
+                f.unlink()
         video = tmp_dir / "input.bin"
-        with timer.stage("download"):
-            video.write_bytes(self.store.get_object(job.video_path or paths.video_key(job.id)))
+        if not video.exists():
+            with timer.stage("download"):
+                video.write_bytes(self.store.get_object(job.video_path or paths.video_key(job.id)))
         with timer.stage("extract"):
             result = extract_keyframes(video, keyframe_dir, params)
         return self.store.update_job(
@@ -278,11 +299,36 @@ class ReconstructionWorker(_Poller):
                         _download_keyframes(self.store, job, keyframe_dir)
                 with timer.stage("reconstruct"):
                     options = (job.config or {}).get("reconstruction") or None
-                    out = (
-                        self.reconstructor.reconstruct(keyframe_dir, work_dir, options)
-                        if options
-                        else self.reconstructor.reconstruct(keyframe_dir, work_dir)
-                    )
+                    out = self._reconstruct(keyframe_dir, work_dir, options)
+                    # Low-texture scenes (plain sheets, glossy mat) can leave SfM with
+                    # a handful of registered frames. Once, re-extract at 2x density
+                    # and try again — cheaper than a failed scan for the patient.
+                    n_in = len(list(keyframe_dir.glob("frame_*.jpg")))
+                    if (
+                        self.extract_keyframes
+                        and job.video_path
+                        and n_in
+                        and len(out.cameras) < self.min_registered_frac * n_in
+                    ):
+                        first = len(out.cameras)
+                        log.warning(
+                            "job %s: only %d/%d frames registered — retrying at 2x keyframes",
+                            job.id,
+                            first,
+                            n_in,
+                        )
+                        job = self._extract_locally(
+                            job, keyframe_dir, tmp_dir, timer, density=2.0, clean=True
+                        )
+                        work_dir2 = tmp_dir / "work2"
+                        work_dir2.mkdir()
+                        out = self._reconstruct(keyframe_dir, work_dir2, options)
+                        out.diagnostics["sfm_retry"] = {
+                            "first_registered": first,
+                            "first_keyframes": n_in,
+                            "keyframes_after": len(list(keyframe_dir.glob("frame_*.jpg"))),
+                            "registered_after": len(out.cameras),
+                        }
                 if not Path(out.mesh_path).exists():
                     raise RuntimeError("engine returned a mesh path that does not exist")
 
