@@ -26,7 +26,16 @@ REMOTE_DIR="${REMOTE_DIR:-/opt/stoma}"
 DOCKERFILE="${WORKER_DOCKERFILE:-Dockerfile.cpu}"
 IMAGE="stoma-worker"
 CONTAINER="stoma-worker"
-GPU_FLAG=""; [[ "$DOCKERFILE" == "Dockerfile" ]] && GPU_FLAG="--gpus all"
+# --gpus all plus explicit device mounts: a host `systemd` reload (unattended-upgrades)
+# strips cgroup device access from running containers on cgroup v2 ("Failed to
+# initialize NVML"); explicit --device mounts survive it.
+GPU_FLAG=""
+if [[ "$DOCKERFILE" == "Dockerfile" ]]; then
+  GPU_FLAG="--gpus all"
+  for d in /dev/nvidia0 /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-uvm-tools /dev/nvidia-modeset; do
+    GPU_FLAG="$GPU_FLAG --device=$d"
+  done
+fi
 
 [[ -n "$HOST" ]]    || { echo "error: DROPLET_HOST not set in .env"; exit 1; }
 [[ -f "$SSH_KEY" ]] || { echo "error: SSH key not found: $SSH_KEY"; exit 1; }

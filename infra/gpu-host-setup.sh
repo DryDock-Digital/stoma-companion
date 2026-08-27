@@ -43,6 +43,9 @@ docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi --quer
 echo "▶ housekeeping"
 # the worker is outbound-only (polls Supabase); nothing listens
 if command -v ufw >/dev/null 2>&1; then ufw allow OpenSSH >/dev/null; ufw --force enable >/dev/null; fi
+# unattended-upgrades triggers systemd reloads that strip GPU access from running
+# containers (cgroup v2 + nvidia-container-toolkit); off during the test campaign
+systemctl disable --now unattended-upgrades >/dev/null 2>&1 || true
 # don't let unattended upgrades reboot mid-test
 sed -i 's/^Unattended-Upgrade::Automatic-Reboot .*/Unattended-Upgrade::Automatic-Reboot "false";/' /etc/apt/apt.conf.d/50unattended-upgrades 2>/dev/null || true
 mkdir -p /opt/stoma

@@ -45,6 +45,22 @@ def run_local(keyframe_dir: Path, output_obj: Path) -> None:
     log.info("wrote mesh → %s (+ poses.json, %d frames)", output_obj, len(out.cameras))
 
 
+def gpu_expected() -> bool:
+    return os.environ.get("COLMAP_USE_GPU", "1") == "1"
+
+
+def gpu_visible() -> bool:
+    """`nvidia-smi -L` inside the container. A host systemd reload can silently
+    detach the GPU from a running container; failing jobs would be wrong — exit so
+    the restart policy brings the container back with the device."""
+    import subprocess
+
+    try:
+        return subprocess.run(["nvidia-smi", "-L"], capture_output=True, timeout=20).returncode == 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def run_queue() -> None:
     settings = Settings()
     if not settings.supabase_configured:
@@ -66,7 +82,21 @@ def run_queue() -> None:
     )
     measurement = MeasurementWorker(store, measurer, worker_id=worker_id, **poller_kwargs)
     poll = float(os.environ.get("WORKER_POLL_INTERVAL", "1"))
-    CombinedWorker(reconstruction, measurement).run_forever(poll_interval=poll)
+    combined = CombinedWorker(reconstruction, measurement)
+    if gpu_expected():
+        if not gpu_visible():
+            log.error("GPU expected but not visible (nvidia-smi failed) — exiting for restart")
+            sys.exit(3)
+        original = combined.run_once
+
+        def guarded_run_once() -> bool:
+            if not gpu_visible():
+                log.error("GPU lost (nvidia-smi failed) — exiting so the container restarts")
+                sys.exit(3)
+            return original()
+
+        combined.run_once = guarded_run_once  # type: ignore[method-assign]
+    combined.run_forever(poll_interval=poll)
 
 
 def main() -> None:
