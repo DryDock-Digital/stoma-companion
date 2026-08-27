@@ -1,0 +1,80 @@
+skip (missing): 175mm/20.1.MOV
+skip (missing): 175mm/20.2.MOV
+skip (missing): 175mm/20.3.MOV
+skip (missing): 175mm/40.1.MOV
+skip (missing): 175mm/40.2.MOV
+skip (missing): 175mm/40.3.MOV
+skip (missing): 175mm/60.1.MOV
+skip (missing): 175mm/60.2.MOV
+skip (missing): 175mm/60.3.MOV
+queued ArUco Scaling/Demo1.MOV → 4d1d8819
+queued ArUco Scaling/Demo2.MOV → fec425e0
+queued ArUco Scaling/IMG_9259.MOV → b9ce7ee5
+queued ArUco Scaling/IMG_9265.MOV → 45ea73b9
+queued ArUco Scaling/IMG_9270.MOV → 18e05eff
+queued Phone Test/720p 30 Front/720f.1.MOV → b49e03b4
+queued Phone Test/720p 30 Front/720f.2.MOV → 36afe58c
+queued Phone Test/720p 30 Front/720f.3.MOV → b2e4cb73
+queued Phone Test/720p 30 Back/720b.1.MOV → 8b4b9af4
+queued Phone Test/720p 30 Back/720b.2.MOV → 06115ebb
+queued Phone Test/720p 30 Back/720b.3.MOV → 09c8dcb9
+queued Phone Test/4k 60/4k.1.MOV → 44833fc8
+queued Phone Test/4k 60/4k.2.MOV → 9e3df1fe
+queued Phone Test/4k 60/4k.3.MOV → c3725153
+queued Phone Test/1080p 60 Back/1080.1.MOV → 04b16db3
+queued Phone Test/1080p 60 Back/1080.2.MOV → a63a2582
+queued Phone Test/1080p 60 Back/1080.3.MOV → 47f107da
+queued Light Test/high.1.MOV → c7873c4b
+queued Light Test/high.2.MOV → d77cca0a
+queued Light Test/high.3.MOV → 0bd69ab7
+queued Light Test/low.1.MOV → 64f36124
+queued Light Test/low.2.MOV → aa7e30ec
+queued Light Test/low.3.MOV → 87dd02f5
+queued Light Test/med.1.MOV → 8cfc059b
+queued Light Test/med.2.MOV → 81d0032c
+queued Light Test/med.3.MOV → 7b0c6bf6
+queued 245mm/20.1.MOV → eb0e7147
+queued 245mm/20.2.MOV → a2d948bd
+queued 245mm/20.3.MOV → 8399f817
+queued 245mm/40.1.MOV → dd36a20f
+queued 245mm/40.2.MOV → e5474b35
+queued 245mm/40.3.MOV → 51bae87b
+queued 245mm/60.1.MOV → 920819df
+queued 245mm/60.2.MOV → f40e6162
+queued 245mm/60.3.MOV → c7a2dbed
+waiting on 35 run(s) …
+  ArUco Scaling/Demo1.MOV: measured Ø 33.09/30.715 dev 0.29/-0.485 PASS 122s
+  ArUco Scaling/Demo2.MOV: measured Ø 56.18/33.628 dev 23.38/2.428 FAIL 84s
+  ArUco Scaling/IMG_9259.MOV: measured Ø 54.259/31.724 dev 21.459/0.524 FAIL 75s
+  ArUco Scaling/IMG_9265.MOV: measured Ø 51.545/36.976 dev 18.745/5.776 FAIL 79s
+  ArUco Scaling/IMG_9270.MOV: measured Ø 13.694/8.95 dev -19.106/-22.25 FAIL 83s
+  Phone Test/720p 30 Front/720f.1.MOV: failed Ø None/None dev None/None FAIL 9s
+  Phone Test/720p 30 Front/720f.2.MOV: failed Ø None/None dev None/None FAIL 1s
+  Phone Test/720p 30 Front/720f.3.MOV: failed Ø None/None dev None/None FAIL 1s
+  Phone Test/720p 30 Back/720b.1.MOV: failed Ø None/None dev None/None FAIL 19s
+  Phone Test/720p 30 Back/720b.2.MOV: failed Ø None/None dev None/None FAIL 10s
+  Phone Test/720p 30 Back/720b.3.MOV: failed Ø None/None dev None/None FAIL 10s
+  Phone Test/4k 60/4k.1.MOV: failed Ø None/None dev None/None FAIL 114s
+  Phone Test/4k 60/4k.2.MOV: failed Ø None/None dev None/None FAIL 124s
+  Phone Test/4k 60/4k.3.MOV: failed Ø None/None dev None/None FAIL 100s
+  Phone Test/1080p 60 Back/1080.1.MOV: failed Ø None/None dev None/None FAIL 15s
+  Phone Test/1080p 60 Back/1080.2.MOV: failed Ø None/None dev None/None FAIL 15s
+  Phone Test/1080p 60 Back/1080.3.MOV: failed Ø None/None dev None/None FAIL 20s
+  Light Test/high.1.MOV: failed Ø None/None dev None/None FAIL 11s
+  Light Test/high.2.MOV: failed Ø None/None dev None/None FAIL 1s
+  Light Test/high.3.MOV: failed Ø None/None dev None/None FAIL 2s
+  Light Test/low.1.MOV: failed Ø None/None dev None/None FAIL 10s
+  Light Test/low.2.MOV: failed Ø None/None dev None/None FAIL 1s
+  Light Test/low.3.MOV: failed Ø None/None dev None/None FAIL 2s
+  Light Test/med.1.MOV: failed Ø None/None dev None/None FAIL 2s
+  Light Test/med.2.MOV: failed Ø None/None dev None/None FAIL 1s
+  Light Test/med.3.MOV: failed Ø None/None dev None/None FAIL 2s
+  245mm/20.1.MOV: failed Ø None/None dev None/None FAIL 2s
+  245mm/20.2.MOV: failed Ø None/None dev None/None FAIL 11s
+  245mm/20.3.MOV: failed Ø None/None dev None/None FAIL 1s
+  245mm/40.1.MOV: failed Ø None/None dev None/None FAIL 2s
+  245mm/40.2.MOV: failed Ø None/None dev None/None FAIL 1s
+  245mm/40.3.MOV: failed Ø None/None dev None/None FAIL 2s
+  245mm/60.1.MOV: failed Ø None/None dev None/None FAIL 2s
+  245mm/60.2.MOV: failed Ø None/None dev None/None FAIL 2s
+  245mm/60.3.MOV: failed Ø None/None dev None/None FAIL 3s

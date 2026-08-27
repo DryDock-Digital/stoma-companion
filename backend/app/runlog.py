@@ -139,9 +139,13 @@ class InMemoryRunStore:
 
 class SupabaseRunStore:
     def __init__(self, settings: Settings) -> None:
-        from supabase import create_client
+        from supabase import ClientOptions, create_client
 
-        self._client = create_client(settings.supabase_url, settings.supabase_service_role_key)
+        self._client = create_client(
+            settings.supabase_url,
+            settings.supabase_service_role_key,
+            options=ClientOptions(postgrest_client_timeout=30, storage_client_timeout=300),
+        )
 
     def _table(self):
         return self._client.table("runs")

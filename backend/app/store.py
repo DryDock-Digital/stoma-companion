@@ -234,12 +234,18 @@ class SupabaseJobStore:
     LIST_PAGE = 1000  # storage.list() pages; default is 100 → silently truncates
 
     def __init__(self, settings: Settings) -> None:
-        from supabase import create_client  # imported here to keep it optional
+        from supabase import ClientOptions, create_client  # optional dependency
 
         self._bucket = settings.supabase_storage_bucket
         self._url = settings.supabase_url
         self._key = settings.supabase_service_role_key
-        self._client = create_client(settings.supabase_url, settings.supabase_service_role_key)
+        # Explicit timeouts: a hung HTTP/2 connection (seen 2026-08-27) otherwise blocks
+        # the caller forever — and with sync calls that meant the whole API.
+        self._client = create_client(
+            settings.supabase_url,
+            settings.supabase_service_role_key,
+            options=ClientOptions(postgrest_client_timeout=30, storage_client_timeout=300),
+        )
 
     def _table(self):
         return self._client.table("jobs")

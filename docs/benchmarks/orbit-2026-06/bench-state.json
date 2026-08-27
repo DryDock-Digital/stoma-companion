@@ -1,0 +1,389 @@
+{
+ "jobs": {
+  "ArUco Scaling/Demo1.MOV": {
+   "id": "4d1d8819-57be-487f-ba21-24297aba81c6",
+   "tags": {
+    "group": "aruco-scaling",
+    "res": "1080x1920",
+    "duration_s": 30.13
+   },
+   "final": "measured"
+  },
+  "ArUco Scaling/Demo2.MOV": {
+   "id": "fec425e0-dd54-4b29-a30f-4f1176b99be9",
+   "tags": {
+    "group": "aruco-scaling",
+    "res": "1080x1920",
+    "duration_s": 30.37
+   },
+   "final": "measured"
+  },
+  "ArUco Scaling/IMG_9259.MOV": {
+   "id": "b9ce7ee5-d142-421e-9213-888b481d9a30",
+   "tags": {
+    "group": "aruco-scaling",
+    "res": "1080x1920",
+    "duration_s": 30.6
+   },
+   "final": "measured"
+  },
+  "ArUco Scaling/IMG_9265.MOV": {
+   "id": "45ea73b9-c645-4677-98b1-95df68b76896",
+   "tags": {
+    "group": "aruco-scaling",
+    "res": "1080x1920",
+    "duration_s": 28.17
+   },
+   "final": "measured"
+  },
+  "ArUco Scaling/IMG_9270.MOV": {
+   "id": "18e05eff-d87d-45bb-9318-e0456b9c943d",
+   "tags": {
+    "group": "aruco-scaling",
+    "res": "1080x1920",
+    "duration_s": 30.7
+   },
+   "final": "measured"
+  },
+  "Phone Test/720p 30 Front/720f.1.MOV": {
+   "id": "b49e03b4-dc8d-4f3e-a1f0-27e518ec6661",
+   "tags": {
+    "take": 1,
+    "group": "phone",
+    "phone": "720p 30 Front",
+    "res": "720x1280",
+    "duration_s": 25.72
+   },
+   "final": "failed"
+  },
+  "Phone Test/720p 30 Front/720f.2.MOV": {
+   "id": "36afe58c-e0f5-4f2b-95d7-0f5edc34f540",
+   "tags": {
+    "take": 2,
+    "group": "phone",
+    "phone": "720p 30 Front",
+    "res": "720x1280",
+    "duration_s": 21.52
+   },
+   "final": "failed"
+  },
+  "Phone Test/720p 30 Front/720f.3.MOV": {
+   "id": "b2e4cb73-8596-4cf2-9b7c-4494b08ca55e",
+   "tags": {
+    "take": 3,
+    "group": "phone",
+    "phone": "720p 30 Front",
+    "res": "720x1280",
+    "duration_s": 21.45
+   },
+   "final": "failed"
+  },
+  "Phone Test/720p 30 Back/720b.1.MOV": {
+   "id": "8b4b9af4-bca0-4ff0-a709-6438628a5ef0",
+   "tags": {
+    "take": 1,
+    "group": "phone",
+    "phone": "720p 30 Back",
+    "res": "720x1280",
+    "duration_s": 21.76
+   },
+   "final": "failed"
+  },
+  "Phone Test/720p 30 Back/720b.2.MOV": {
+   "id": "06115ebb-1f7e-45ef-a2d0-9cf769c33fd0",
+   "tags": {
+    "take": 2,
+    "group": "phone",
+    "phone": "720p 30 Back",
+    "res": "720x1280",
+    "duration_s": 21.53
+   },
+   "final": "failed"
+  },
+  "Phone Test/720p 30 Back/720b.3.MOV": {
+   "id": "09c8dcb9-366e-4cd6-b0c6-4adf65443f58",
+   "tags": {
+    "take": 3,
+    "group": "phone",
+    "phone": "720p 30 Back",
+    "res": "720x1280",
+    "duration_s": 21.4
+   },
+   "final": "failed"
+  },
+  "Phone Test/4k 60/4k.1.MOV": {
+   "id": "44833fc8-6872-4986-a5a6-df89c8ce1e90",
+   "tags": {
+    "take": 1,
+    "group": "phone",
+    "phone": "4k 60",
+    "res": "2160x3840",
+    "duration_s": 22.37
+   },
+   "final": "failed"
+  },
+  "Phone Test/4k 60/4k.2.MOV": {
+   "id": "9e3df1fe-143d-4060-81a5-8bd24d76f420",
+   "tags": {
+    "take": 2,
+    "group": "phone",
+    "phone": "4k 60",
+    "res": "2160x3840",
+    "duration_s": 22.32
+   },
+   "final": "failed"
+  },
+  "Phone Test/4k 60/4k.3.MOV": {
+   "id": "c3725153-6f90-47e2-9111-4beee1c8f588",
+   "tags": {
+    "take": 3,
+    "group": "phone",
+    "phone": "4k 60",
+    "res": "2160x3840",
+    "duration_s": 20.5
+   },
+   "final": "failed"
+  },
+  "Phone Test/1080p 60 Back/1080.1.MOV": {
+   "id": "04b16db3-c10d-4720-a518-df69f413a3b8",
+   "tags": {
+    "take": 1,
+    "group": "phone",
+    "phone": "1080p 60 Back",
+    "res": "1080x1920",
+    "duration_s": 21.66
+   },
+   "final": "failed"
+  },
+  "Phone Test/1080p 60 Back/1080.2.MOV": {
+   "id": "a63a2582-c193-4054-a83d-c32751a1e8f4",
+   "tags": {
+    "take": 2,
+    "group": "phone",
+    "phone": "1080p 60 Back",
+    "res": "1080x1920",
+    "duration_s": 21.81
+   },
+   "final": "failed"
+  },
+  "Phone Test/1080p 60 Back/1080.3.MOV": {
+   "id": "47f107da-3cfa-413b-a8d6-f1b1d371c3d4",
+   "tags": {
+    "take": 3,
+    "group": "phone",
+    "phone": "1080p 60 Back",
+    "res": "1080x1920",
+    "duration_s": 22.38
+   },
+   "final": "failed"
+  },
+  "Light Test/high.1.MOV": {
+   "id": "c7873c4b-eade-4d54-9f3c-064fe4da7c0e",
+   "tags": {
+    "take": 1,
+    "group": "light",
+    "light": "high",
+    "res": "1080x1920",
+    "duration_s": 20.4
+   },
+   "final": "failed"
+  },
+  "Light Test/high.2.MOV": {
+   "id": "d77cca0a-0125-47ff-a7a0-6967de53d440",
+   "tags": {
+    "take": 2,
+    "group": "light",
+    "light": "high",
+    "res": "1080x1920",
+    "duration_s": 20.27
+   },
+   "final": "failed"
+  },
+  "Light Test/high.3.MOV": {
+   "id": "0bd69ab7-8f71-454e-9df3-d34658f137c4",
+   "tags": {
+    "take": 3,
+    "group": "light",
+    "light": "high",
+    "res": "1080x1920",
+    "duration_s": 20.77
+   },
+   "final": "failed"
+  },
+  "Light Test/low.1.MOV": {
+   "id": "64f36124-a026-45c1-9a31-7c4449747827",
+   "tags": {
+    "take": 1,
+    "group": "light",
+    "light": "low",
+    "res": "1080x1920",
+    "duration_s": 20.58
+   },
+   "final": "failed"
+  },
+  "Light Test/low.2.MOV": {
+   "id": "aa7e30ec-56ee-4847-865c-87538b3a32c7",
+   "tags": {
+    "take": 2,
+    "group": "light",
+    "light": "low",
+    "res": "1080x1920",
+    "duration_s": 20.46
+   },
+   "final": "failed"
+  },
+  "Light Test/low.3.MOV": {
+   "id": "87dd02f5-08dc-4c0c-ace8-a8a4d8edd8c3",
+   "tags": {
+    "take": 3,
+    "group": "light",
+    "light": "low",
+    "res": "1080x1920",
+    "duration_s": 20.79
+   },
+   "final": "failed"
+  },
+  "Light Test/med.1.MOV": {
+   "id": "8cfc059b-9aa4-4674-9832-ada112962781",
+   "tags": {
+    "take": 1,
+    "group": "light",
+    "light": "med",
+    "res": "1080x1920",
+    "duration_s": 19.57
+   },
+   "final": "failed"
+  },
+  "Light Test/med.2.MOV": {
+   "id": "81d0032c-e287-43a1-b373-378ac6f5a4c9",
+   "tags": {
+    "take": 2,
+    "group": "light",
+    "light": "med",
+    "res": "1080x1920",
+    "duration_s": 20.97
+   },
+   "final": "failed"
+  },
+  "Light Test/med.3.MOV": {
+   "id": "7b0c6bf6-833c-4c30-a469-f68b204bb81a",
+   "tags": {
+    "take": 3,
+    "group": "light",
+    "light": "med",
+    "res": "1080x1920",
+    "duration_s": 20.27
+   },
+   "final": "failed"
+  },
+  "245mm/20.1.MOV": {
+   "id": "eb0e7147-45fa-4f47-bd58-c1cfbdf0896d",
+   "tags": {
+    "take": 1,
+    "group": "distance-245mm",
+    "distance_mm": 245,
+    "angle_deg": 20,
+    "res": "1080x1920",
+    "duration_s": 20.27
+   },
+   "final": "failed"
+  },
+  "245mm/20.2.MOV": {
+   "id": "a2d948bd-d2dc-43f9-b2b1-c2ca0e2e68f7",
+   "tags": {
+    "take": 2,
+    "group": "distance-245mm",
+    "distance_mm": 245,
+    "angle_deg": 20,
+    "res": "1080x1920",
+    "duration_s": 20.57
+   },
+   "final": "failed"
+  },
+  "245mm/20.3.MOV": {
+   "id": "8399f817-de32-4f67-ae74-ae27c0e30030",
+   "tags": {
+    "take": 3,
+    "group": "distance-245mm",
+    "distance_mm": 245,
+    "angle_deg": 20,
+    "res": "1080x1920",
+    "duration_s": 20.57
+   },
+   "final": "failed"
+  },
+  "245mm/40.1.MOV": {
+   "id": "dd36a20f-2aa2-4eb9-b5d4-021db9a848f3",
+   "tags": {
+    "take": 1,
+    "group": "distance-245mm",
+    "distance_mm": 245,
+    "angle_deg": 40,
+    "res": "1080x1920",
+    "duration_s": 22.4,
+    "legacy_mm": 38.7
+   },
+   "final": "failed"
+  },
+  "245mm/40.2.MOV": {
+   "id": "e5474b35-8f29-432b-a362-ed9151e7db90",
+   "tags": {
+    "take": 2,
+    "group": "distance-245mm",
+    "distance_mm": 245,
+    "angle_deg": 40,
+    "res": "1080x1920",
+    "duration_s": 20.67
+   },
+   "final": "failed"
+  },
+  "245mm/40.3.MOV": {
+   "id": "51bae87b-6782-4cc7-bd84-a26ddd44a1b4",
+   "tags": {
+    "take": 3,
+    "group": "distance-245mm",
+    "distance_mm": 245,
+    "angle_deg": 40,
+    "res": "1080x1920",
+    "duration_s": 21.34
+   },
+   "final": "failed"
+  },
+  "245mm/60.1.MOV": {
+   "id": "920819df-306b-4023-bc0e-c5835b73750e",
+   "tags": {
+    "take": 1,
+    "group": "distance-245mm",
+    "distance_mm": 245,
+    "angle_deg": 60,
+    "res": "1080x1920",
+    "duration_s": 20.16
+   },
+   "final": "failed"
+  },
+  "245mm/60.2.MOV": {
+   "id": "f40e6162-da19-4bac-b57b-661f4ed63740",
+   "tags": {
+    "take": 2,
+    "group": "distance-245mm",
+    "distance_mm": 245,
+    "angle_deg": 60,
+    "res": "1080x1920",
+    "duration_s": 21.96
+   },
+   "final": "failed"
+  },
+  "245mm/60.3.MOV": {
+   "id": "c7a2dbed-3eb4-48ca-ac2c-4db617479353",
+   "tags": {
+    "take": 3,
+    "group": "distance-245mm",
+    "distance_mm": 245,
+    "angle_deg": 60,
+    "res": "1080x1920",
+    "duration_s": 20.46
+   },
+   "final": "failed"
+  }
+ }
+}

@@ -227,7 +227,7 @@ def _sync_run_log(job: Job, run_store: RunStore) -> None:
 
 
 @router.post("/scans", status_code=201, response_model=ScanCreated)
-async def admin_create_scan(
+def admin_create_scan(
     video: UploadFile = File(...),
     model_name: str | None = Form(None),
     truth_mm: float | None = Form(None),
@@ -238,7 +238,7 @@ async def admin_create_scan(
     store: JobStore = Depends(get_store),
     settings: Settings = Depends(get_app_settings),
 ) -> ScanCreated:
-    data, content_type, receive_s = await read_and_validate_upload(video, settings)
+    data, content_type, receive_s = read_and_validate_upload(video, settings)
     tag_dict: dict[str, Any] | None = None
     if tags:
         try:
@@ -271,13 +271,13 @@ async def admin_create_scan(
 
 
 @router.get("/scans")
-async def admin_list_scans(limit: int = 50, store: JobStore = Depends(get_store)) -> dict:
+def admin_list_scans(limit: int = 50, store: JobStore = Depends(get_store)) -> dict:
     jobs = store.list_jobs(limit=max(1, min(limit, 500)))
     return {"jobs": [_summary(j).model_dump(mode="json") for j in jobs]}
 
 
 @router.get("/scans/{job_id}", response_model=AdminScanDetail)
-async def admin_get_scan(
+def admin_get_scan(
     job_id: str,
     store: JobStore = Depends(get_store),
     run_store: RunStore = Depends(get_run_store),
@@ -289,7 +289,7 @@ async def admin_get_scan(
 
 
 @router.patch("/scans/{job_id}", response_model=AdminScanDetail)
-async def admin_patch_scan(
+def admin_patch_scan(
     job_id: str,
     patch: TruthPatch,
     store: JobStore = Depends(get_store),
@@ -327,7 +327,7 @@ async def admin_patch_scan(
 
 
 @router.get("/scans/{job_id}/gcode", response_class=PlainTextResponse)
-async def admin_get_gcode(job_id: str, store: JobStore = Depends(get_store)) -> str:
+def admin_get_gcode(job_id: str, store: JobStore = Depends(get_store)) -> str:
     job = store.get_job(job_id)
     if job is None:
         raise HTTPException(404, "Scan not found.")
@@ -337,7 +337,7 @@ async def admin_get_gcode(job_id: str, store: JobStore = Depends(get_store)) -> 
 
 
 @router.get("/report.csv", response_class=PlainTextResponse)
-async def admin_report_csv(run_store: RunStore = Depends(get_run_store)) -> PlainTextResponse:
+def admin_report_csv(run_store: RunStore = Depends(get_run_store)) -> PlainTextResponse:
     from ..verify.report import to_csv  # lazy: the verify package needs the measure extra
 
     runs = run_store.list()
@@ -369,7 +369,7 @@ def _delete_job_everything(job: Job, store: JobStore, run_store: RunStore) -> di
 
 
 @router.delete("/scans/{job_id}")
-async def admin_delete_scan(
+def admin_delete_scan(
     job_id: str,
     store: JobStore = Depends(get_store),
     run_store: RunStore = Depends(get_run_store),
@@ -381,7 +381,7 @@ async def admin_delete_scan(
 
 
 @router.delete("/scans")
-async def admin_clear_scans(
+def admin_clear_scans(
     confirm: str = "",
     store: JobStore = Depends(get_store),
     run_store: RunStore = Depends(get_run_store),
@@ -415,7 +415,7 @@ class RerunOptions(BaseModel):
 
 
 @router.post("/scans/{job_id}/rerun", status_code=201, response_model=ScanCreated)
-async def admin_rerun_scan(
+def admin_rerun_scan(
     job_id: str,
     options: RerunOptions | None = None,
     store: JobStore = Depends(get_store),
