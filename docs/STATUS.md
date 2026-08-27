@@ -52,7 +52,7 @@ screen (P0-6) to confirm capture quality matches native-camera clips.
 
 ## Open decisions / next steps
 
-1. Image registry for disaster recovery (DO Basic $5/mo; wiring exists) — Aaron's call.
+1. Image registry for disaster recovery — **deferred by Aaron (2026-08-27)**; wiring exists (`WORKER_REGISTRY`, `PULL_ONLY=1`). Recovery without it = ~40 min rebuild from the pinned Dockerfile.
 2. Model 2 base calipers → grade; then re-film the condition matrix with the card → batch.
 3. Optional: mat-as-scale fallback (needs the disc diameter) for card-less scans.
 4. After the gate: P4-1 grblHAL simulator; sender consumes `<job>/wafer.gcode`, claims
