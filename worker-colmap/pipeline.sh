@@ -32,6 +32,8 @@ MVS_RES_LEVEL="${MVS_RESOLUTION_LEVEL:-2}"     # 0 = full res, each level halves
 MVS_VIEWS="${MVS_NUMBER_VIEWS:-4}"
 MVS_MAX_RES="${MVS_MAX_RESOLUTION:-1200}"
 DECIMATE="${MESH_DECIMATE:-0.3}"
+MESH_MODE="${MESH_MODE:-mesh}"                 # mesh (ReconstructMesh) | points (dense cloud only)
+MAX_POINTS="${MAX_POINTS:-1500000}"            # points mode: subsample cap for the artefact
 
 # COLMAP renamed the GPU/size options between 3.x and 4.x; pick whichever this
 # binary understands so one script serves the apt (3.x) and CUDA (4.x) images.
@@ -180,6 +182,31 @@ DensifyPointCloud --working-folder "$MVS" \
   -i "$MVS/scene.mvs" -o "$MVS/scene_dense.mvs"
 
 tick densify
+if [[ "$MESH_MODE" == "points" ]]; then
+  # Measurement works on point sections (polar outlines); skip meshing — the single
+  # largest CPU step on the GPU worker (26–49 s). Export the dense cloud as a
+  # vertex-only OBJ (trimesh loads it as a PointCloud).
+  echo "[export] dense cloud → vertex-only OBJ (max $MAX_POINTS points)"
+  python3 - "$MVS/scene_dense.ply" "$OUTPUT_OBJ" "$MAX_POINTS" <<'PY'
+import sys
+
+import numpy as np
+import trimesh
+
+cloud = trimesh.load(sys.argv[1], process=False)
+pts = np.asarray(cloud.vertices, dtype=float)
+cap = int(sys.argv[3])
+if len(pts) > cap:
+    pts = pts[np.random.default_rng(0).choice(len(pts), cap, replace=False)]
+with open(sys.argv[2], "w") as fh:
+    fh.write("# dense point cloud (no faces)\n")
+    np.savetxt(fh, pts, fmt="v %.6f %.6f %.6f")
+print(f"[export] {len(pts)} points")
+PY
+  tick export
+  echo "[done] points → $OUTPUT_OBJ"
+  exit 0
+fi
 echo "[openmvs] reconstruct mesh (decimate=$DECIMATE)"
 ReconstructMesh --working-folder "$MVS" \
   --decimate "$DECIMATE" \

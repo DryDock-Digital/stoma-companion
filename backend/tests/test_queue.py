@@ -423,3 +423,18 @@ def test_pending_without_video_is_not_claimed_by_worker():
     store.create_job()
     w = ReconstructionWorker(store, FakeReconstructor(), worker_id="w1")
     assert w.run_once() is False
+
+
+def test_reconstruction_options_reach_the_engine():
+    store = InMemoryJobStore()
+    job = _ready_job_with_keyframes(store)
+    store.update_job(job.id, config={"reconstruction": {"MESH_MODE": "points"}})
+    seen = {}
+
+    class Engine(FakeReconstructor):
+        def reconstruct(self, keyframe_dir, work_dir, options=None):
+            seen.update(options or {})
+            return super().reconstruct(keyframe_dir, work_dir)
+
+    ReconstructionWorker(store, Engine(), worker_id="w1").run_once()
+    assert seen == {"MESH_MODE": "points"}

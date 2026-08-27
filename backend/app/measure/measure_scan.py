@@ -190,9 +190,14 @@ def measure_scan(
             truth_mm=truth_mm,
         )
     vertices = np.asarray(vertices, dtype=float)
-    faces = np.asarray(faces, dtype=int)
-    if len(vertices) == 0 or len(faces) == 0:
-        raise MeasureError("empty mesh", user_message=None)
+    faces = (
+        np.asarray(faces, dtype=int).reshape(-1, 3)
+        if np.asarray(faces).size
+        else np.zeros((0, 3), int)
+    )
+    is_cloud = len(faces) == 0  # dense point cloud (no meshing step) — polar outlines only
+    if len(vertices) == 0:
+        raise MeasureError("empty reconstruction", user_message=None)
 
     # 1. detect the marker in every keyframe that has a pose; collect corner obs.
     cams: list[PinholeCamera] = []
@@ -263,6 +268,8 @@ def measure_scan(
     floor_h = float(marker_centre_mm @ normal)
     heights = roi_v[inside] @ normal
     max_h = float(heights.max())
+    if is_cloud and len(roi_v) < 500:
+        raise MeasureError("too few reconstructed points around the card")
     if max_h - floor_h < 1.0:
         raise MeasureError("nothing rises above the skin plane inside the region of interest")
     probe = min(floor_h + params.axis_probe_mm, floor_h + 0.6 * (max_h - floor_h))
@@ -302,6 +309,8 @@ def measure_scan(
     polar_d = float(np.interp(rel_h, prof_h, np.nan_to_num(prof_d, nan=0.0)))
     outline_method = "loop"
     try:
+        if is_cloud:
+            raise slicing.LoopError("point cloud: no traced loops")
         perimeter = slicing.extract_perimeter(
             roi_v,
             roi_f,
@@ -316,18 +325,11 @@ def measure_scan(
         if polar_d > 0 and abs(perimeter.diameter() - polar_d) > 0.10 * polar_d:
             raise slicing.LoopError("traced loop disagrees with the polar profile")
     except slicing.LoopError:
-        outline_method = "polar"
-        segs = slicing.extract_perimeter(
-            roi_v,
-            roi_f,
-            normal,
-            0.0,
-            floor_h=floor_h,
-            max_h=max_h,
-            plane_h=plane_h,
-            return_segments=True,
-        )
-        outline = slicing.polar_section_outline(segs, axis, r_ref)
+        outline_method = "polar-cloud" if is_cloud else "polar"
+        from .slice_height import section_points
+
+        pts = section_points(roi_v, roi_f, normal, floor_h=floor_h, max_h=max_h, plane_h=plane_h)
+        outline = slicing.polar_section_outline(pts, axis, r_ref)
         if outline is None:
             raise MeasureError("no stoma section at the base height") from None
         au, av = slicing.slice_basis(normal)
@@ -406,6 +408,7 @@ def measure_scan(
                 for h, dd in zip(prof_h, prof_d, strict=True)
             ],
             "roi_vertices": int(len(roi_v)),
+            "input_kind": "point-cloud" if is_cloud else "mesh",
             "loop_vertices": perimeter.loop_vertex_count,
         },
     )

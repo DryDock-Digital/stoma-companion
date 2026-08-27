@@ -91,6 +91,25 @@ def _segments(vertices, faces, normal, *, floor_h, max_h, plane_h):
         return []
 
 
+#: half-thickness of the slab of points that forms a point-cloud section (mm)
+CLOUD_BAND_MM = 0.4
+
+
+def _is_cloud(faces) -> bool:
+    return faces is None or np.asarray(faces).size == 0
+
+
+def section_points(vertices, faces, normal, *, floor_h, max_h, plane_h, band=CLOUD_BAND_MM):
+    """(N,2) section points at `plane_h`: triangle/plane crossings for a mesh, or
+    the points within ±band of the plane for a point cloud. Empty when nothing."""
+    if _is_cloud(faces):
+        return slicing.section_points_from_cloud(vertices, normal, plane_h, band)
+    segs = _segments(vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=plane_h)
+    if not segs:
+        return np.zeros((0, 2))
+    return np.array([p for s in segs for p in s], dtype=float)
+
+
 def stoma_axis(
     vertices,
     faces,
@@ -103,6 +122,7 @@ def stoma_axis(
     near=None,
     radius_range=(4.0, 40.0),
     min_points: int = 10,
+    band: float = 4 * CLOUD_BAND_MM,
 ):
     """((u, v) of the stoma axis in slice coordinates, reference radius).
 
@@ -112,10 +132,13 @@ def stoma_axis(
     placed next to the stoma, background objects are not. Taking the *largest*
     cluster picked a table edge 100 mm away on the first GPU reconstruction. Without
     `near`, the largest plausible cluster is used. None if nothing is cut."""
-    segs = _segments(vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=probe_h)
-    if not segs:
+    # a thicker slab for the axis probe: it only needs *where*, and a sparse cloud
+    # fragments a thin ring into arcs
+    pts = section_points(
+        vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=probe_h, band=band
+    )
+    if len(pts) == 0:
         return None
-    pts = np.array([p for s in segs for p in s])
     candidates = []
     for cl in slicing.point_clusters(pts, cell):
         if len(cl) < min_points:
@@ -143,8 +166,8 @@ def polar_diameter_profile(
     )
     out = []
     for h in heights:
-        segs = _segments(vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=h)
-        o = slicing.polar_section_outline(segs, axis, r_ref) if segs else None
+        pts = section_points(vertices, faces, normal, floor_h=floor_h, max_h=max_h, plane_h=h)
+        o = slicing.polar_section_outline(pts, axis, r_ref) if len(pts) else None
         out.append(float("nan") if o is None else slicing.max_planar_chord_length(o))
     return heights - floor_h, np.array(out)
 

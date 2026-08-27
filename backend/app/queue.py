@@ -65,10 +65,13 @@ class Reconstructor(Protocol):
     #: label written onto the job's `engine` column (e.g. 'colmap+openmvs').
     name: str
 
-    def reconstruct(self, keyframe_dir: Path, work_dir: Path) -> ReconstructionOutput:
-        """Build a mesh from the JPEGs in `keyframe_dir`; `work_dir` is scratch
-        space the engine owns for the call. Must raise on failure (never return a
-        missing mesh) and must respect its own wall-clock timeout."""
+    def reconstruct(
+        self, keyframe_dir: Path, work_dir: Path, options: dict | None = None
+    ) -> ReconstructionOutput:
+        """Build a mesh (or dense point cloud) from the JPEGs in `keyframe_dir`;
+        `work_dir` is scratch space the engine owns for the call. `options` are
+        per-job engine knobs from `job.config["reconstruction"]` (sweeps); unknown
+        keys are ignored. Must raise on failure and respect its own timeout."""
         ...
 
 
@@ -272,7 +275,12 @@ class ReconstructionWorker(_Poller):
                     with timer.stage("download"):
                         _download_keyframes(self.store, job, keyframe_dir)
                 with timer.stage("reconstruct"):
-                    out = self.reconstructor.reconstruct(keyframe_dir, work_dir)
+                    options = (job.config or {}).get("reconstruction") or None
+                    out = (
+                        self.reconstructor.reconstruct(keyframe_dir, work_dir, options)
+                        if options
+                        else self.reconstructor.reconstruct(keyframe_dir, work_dir)
+                    )
                 if not Path(out.mesh_path).exists():
                     raise RuntimeError("engine returned a mesh path that does not exist")
 

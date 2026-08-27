@@ -172,3 +172,27 @@ def test_axis_prefers_the_object_next_to_the_card():
     )
     assert res.diameter_mm == pytest.approx(33.0, abs=0.4)
     assert res.extra["axis_to_card_mm"] < 90
+
+
+def test_point_cloud_mode_measures_without_a_mesh():
+    """Dense point cloud in, no faces: polar sections only. Same 33 mm answer."""
+    cams, imgs = _scene()
+    verts, faces = _stoma_on_skin_with_junk()
+    mesh = trimesh.Trimesh(verts, faces, process=False)
+    pts, _ = trimesh.sample.sample_surface(
+        mesh, 1_500_000, seed=0
+    )  # ~5 pts/mm², like a real dense cloud
+    res = measure_scan(
+        np.asarray(pts, float),
+        np.zeros((0, 3), int),
+        cams,
+        imgs,
+        marker_side_mm=MARKER_SIDE,
+        marker_id=7,
+        truth_mm=33.0,
+    )
+    assert res.extra["input_kind"] == "point-cloud"
+    assert res.extra["outline_method"] == "polar-cloud"
+    assert res.diameter_mm == pytest.approx(33.0, abs=0.4)
+    assert res.shape["min_width_mm"] == pytest.approx(33.0, abs=0.5)
+    assert len(res.outline_mm) == 100 and res.clearance["passes"]

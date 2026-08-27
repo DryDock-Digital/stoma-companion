@@ -47,9 +47,14 @@ class MeasureStage:
 
         # process=True merges the duplicated vertex records OBJ exporters emit for
         # texture seams (3.9M records → 657k vertices on the first real mesh)
-        mesh = trimesh.load(str(mesh_path), force="mesh", process=True)
-        vertices = np.asarray(mesh.vertices, dtype=float)
-        faces = np.asarray(mesh.faces, dtype=int)
+        loaded = trimesh.load(str(mesh_path), process=False)
+        if isinstance(loaded, trimesh.PointCloud) or not hasattr(loaded, "faces"):
+            vertices = np.asarray(loaded.vertices, dtype=float)
+            faces = np.zeros((0, 3), dtype=int)  # dense point cloud: no meshing step
+        else:
+            mesh = trimesh.load(str(mesh_path), force="mesh", process=True)
+            vertices = np.asarray(mesh.vertices, dtype=float)
+            faces = np.asarray(mesh.faces, dtype=int)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             fut = pool.submit(

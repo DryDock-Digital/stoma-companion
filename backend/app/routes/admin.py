@@ -381,6 +381,8 @@ class RerunOptions(BaseModel):
     keyframe_interval_seconds: float | None = None
     keyframe_max_frames: int | None = None
     notes: str | None = None
+    #: engine knobs for this run only, e.g. {"MESH_MODE": "points", "MVS_RESOLUTION_LEVEL": 2}
+    reconstruction: dict[str, Any] | None = None
 
 
 @router.post("/scans/{job_id}/rerun", status_code=201, response_model=ScanCreated)
@@ -422,6 +424,10 @@ async def admin_rerun_scan(
             config["keyframe_max_frames"] = int(options.keyframe_max_frames)
         if options.notes is not None:
             config["notes"] = options.notes
+        if options.reconstruction:
+            config["reconstruction"] = {
+                str(k): v for k, v in options.reconstruction.items() if v is not None
+            }
     job = store.create_job(config=config)
     video_key = paths.video_key(job.id)
     try:

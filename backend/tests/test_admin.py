@@ -216,3 +216,7 @@ def test_rerun_copies_video_and_truths():
     j = store.get_job(r.json()["id"])
     assert j.config["keyframe_interval_seconds"] == 0.7 and j.config["notes"] == "44f"
     assert j.config["truth_mm"] == 33.0  # truths still carried
+    r = client.post(
+        f"/admin/scans/{job_id}/rerun", json={"reconstruction": {"MESH_MODE": "points"}}
+    )
+    assert store.get_job(r.json()["id"]).config["reconstruction"] == {"MESH_MODE": "points"}

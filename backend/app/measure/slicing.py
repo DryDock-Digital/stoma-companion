@@ -120,6 +120,10 @@ def crop_mesh(
     h = rel @ n
     radial = np.linalg.norm(rel - np.outer(h, n), axis=1)
     inside = (radial <= radius) & (h >= -below) & (h <= above)
+    if f.size == 0:  # point cloud: no faces, just keep the inside points
+        if not inside.any():
+            raise LoopError("Region of interest around the marker contains no points.")
+        return v[inside], np.zeros((0, 3), dtype=int), np.ones(int(inside.sum()), dtype=bool)
     keep_f = inside[f].any(axis=1)
     if not keep_f.any():
         raise LoopError("Region of interest around the marker contains no mesh.")
@@ -127,6 +131,27 @@ def crop_mesh(
     remap = -np.ones(len(v), dtype=int)
     remap[used] = np.arange(len(used))
     return v[used], remap[f[keep_f]], inside[used]
+
+
+def section_points_from_cloud(
+    vertices: np.ndarray,
+    normal: np.ndarray,
+    plane_d: float,
+    band: float,
+    axis_u: np.ndarray | None = None,
+    axis_v: np.ndarray | None = None,
+) -> np.ndarray:
+    """Point-cloud section: the (N,2) in-plane coordinates of points within ±`band`
+    of the plane `dot(x, normal) = plane_d`. The point-cloud counterpart of the
+    triangle/plane intersection — no mesh needed."""
+    v = np.asarray(vertices, dtype=float)
+    n = _normalize(np.asarray(normal, dtype=float))
+    if axis_u is None or axis_v is None:
+        axis_u, axis_v = slice_basis(n)
+    h = v @ n - plane_d
+    sel = np.abs(h) <= band
+    pts = v[sel]
+    return np.column_stack([pts @ axis_u, pts @ axis_v]) if len(pts) else np.zeros((0, 2))
 
 
 def height_extrema(vertices: np.ndarray, normal: np.ndarray) -> tuple[float, float]:
@@ -430,9 +455,12 @@ def polar_section_outline(
     Missing bins are interpolated. Immune to holes and T-junctions; a stoma is
     star-shaped about its axis so the approximation is faithful. Returns (bins,2)
     points or None when fewer than `min_filled_frac` of bins have data."""
-    if not segments:
+    if segments is None or len(segments) == 0:
         return None
-    pts = np.array([p for seg in segments for p in seg], dtype=float) - np.asarray(axis, float)
+    if isinstance(segments, np.ndarray):  # already (N,2) section points (point cloud)
+        pts = np.asarray(segments, dtype=float) - np.asarray(axis, float)
+    else:
+        pts = np.array([p for seg in segments for p in seg], dtype=float) - np.asarray(axis, float)
     r = np.hypot(pts[:, 0], pts[:, 1])
     tol = max(r_tol_min, r_tol_frac * r_ref)
     keep = np.abs(r - r_ref) <= tol
