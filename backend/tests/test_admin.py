@@ -209,3 +209,10 @@ def test_rerun_copies_video_and_truths():
     assert new.config["model_name"] == "A" and new.config["truth_min_mm"] == 30.0
     assert new.config["rerun_of"] == job_id and new.config["source"] == "rerun"
     assert client.post("/admin/scans/nope/rerun").status_code == 404
+    # sweep overrides
+    r = client.post(
+        f"/admin/scans/{job_id}/rerun", json={"keyframe_interval_seconds": 0.7, "notes": "44f"}
+    )
+    j = store.get_job(r.json()["id"])
+    assert j.config["keyframe_interval_seconds"] == 0.7 and j.config["notes"] == "44f"
+    assert j.config["truth_mm"] == 33.0  # truths still carried

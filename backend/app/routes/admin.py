@@ -375,9 +375,18 @@ async def admin_clear_scans(
     }
 
 
+class RerunOptions(BaseModel):
+    """Optional per-run overrides for speed/accuracy sweeps (stored on the job config)."""
+
+    keyframe_interval_seconds: float | None = None
+    keyframe_max_frames: int | None = None
+    notes: str | None = None
+
+
 @router.post("/scans/{job_id}/rerun", status_code=201, response_model=ScanCreated)
 async def admin_rerun_scan(
     job_id: str,
+    options: RerunOptions | None = None,
     store: JobStore = Depends(get_store),
     settings: Settings = Depends(get_app_settings),
 ) -> ScanCreated:
@@ -406,6 +415,13 @@ async def admin_rerun_scan(
         "reference_point": cfg.get("reference_point"),
         "notes": cfg.get("notes"),
     }
+    if options is not None:
+        if options.keyframe_interval_seconds is not None:
+            config["keyframe_interval_seconds"] = float(options.keyframe_interval_seconds)
+        if options.keyframe_max_frames is not None:
+            config["keyframe_max_frames"] = int(options.keyframe_max_frames)
+        if options.notes is not None:
+            config["notes"] = options.notes
     job = store.create_job(config=config)
     video_key = paths.video_key(job.id)
     try:
