@@ -1,4 +1,4 @@
-# Status — where things stand (maintained; last update 2026-08-27)
+# Status — where things stand (maintained; last update 2026-08-28)
 
 Read this first in a new session. History and rationale: `docs/decisions.md` (D1–D19);
 tickets: `TASKS.md`; test protocol: `docs/test-protocol.md`.
@@ -8,7 +8,7 @@ tickets: `TASKS.md`; test protocol: `docs/test-protocol.md`.
 | Piece | Where | How to deploy |
 |---|---|---|
 | API (FastAPI) + Caddy TLS | DO droplet `159.65.233.200` → https://159-65-233-200.sslip.io | `./infra/deploy.sh` |
-| GPU reconstruction worker | `134.122.35.141` (client box, RTX 6000 Ada) | `WORKER_DOCKERFILE=Dockerfile ./infra/deploy-worker.sh` (`DETACHED_BUILD=1` for full rebuilds; `PULL_ONLY=1` once a registry is set) |
+| GPU reconstruction worker | **destroyed 2026-08-28** to save cost between test rounds (was `134.122.35.141`, RTX 6000 Ada). Image + env backed up in `~/Documents/DryDock/StomaCompanion-backups/gpu-host-2026-08-28/` — its README has the restore steps (≈5 min via `docker load`) | `WORKER_DOCKERFILE=Dockerfile ./infra/deploy-worker.sh` (`DETACHED_BUILD=1` for full rebuilds; `PULL_ONLY=1` once a registry is set) |
 | CPU fallback worker | on the API droplet, container `stoma-worker`, **stopped** | `docker start stoma-worker` there |
 | Data | Supabase project `kmvntwgakucckcolbgym` (`jobs`, `runs`, bucket `scans`), migrations 0001–0006 applied | `supabase/migrations/` |
 | Patient app + admin bench | https://stomacompanion.netlify.app and `/admin` (auto-deploys from `main`) | push to `main` |
